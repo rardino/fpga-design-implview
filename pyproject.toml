@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "implview"
+version = "0.1.0"
+description = "Pictures and an interactive viewer of Vivado implemented designs: device resources and what the design uses of them"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+authors = [{ name = "Rocco Ardino", email = "roccoardino@gmail.com" }]
+dependencies = ["numpy", "matplotlib"]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.scripts]
+implview = "implview.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+implview = ["tcl/*.tcl"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
