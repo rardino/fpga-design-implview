@@ -35,11 +35,8 @@ def test_auto_groups_split_the_largest_first():
     assert "io" in names
 
 
-def test_pattern_and_depth_groups():
+def test_depth_groups():
     cs = cells("a/x/1", "a/y/2", "b/3", "c")
-    groups, cg = hier.pattern_groups(cs, ["a/x", "b*"])
-    assert [g.name for g in groups] == ["a/x", "b*", hier.OTHER]
-    assert cg == [0, 2, 1, 2]
     groups, cg = hier.depth_groups(cs, 1)
     assert {g.name for g in groups} == {"a", "b", ""}
 
@@ -51,7 +48,7 @@ def test_short_labels_keep_generic_parents():
 
 def test_placement_and_utilization(loaded):
     dev, des, lay = loaded
-    groups, cg = group_cells(des)
+    groups, cg, _ = group_cells(des)
     p = build_placement(dev, des, groups, cg)
     assert p.missing == 0
     si = dev.site_index()
@@ -68,7 +65,7 @@ def test_outputs(loaded, tmp_path):
     from implview.html import write_html
     from implview.render import write_outputs
     dev, des, lay = loaded
-    groups, cg = group_cells(des)
+    groups, cg, _ = group_cells(des)
     p = build_placement(dev, des, groups, cg)
     out = write_outputs([str(tmp_path / "a.png"), str(tmp_path / "a.pdf"), str(tmp_path / "a.svg")],
                         dev, lay, des, p)

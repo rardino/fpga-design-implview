@@ -48,6 +48,8 @@ def export(a, src):
     routing = not getattr(a, "no_routing", False)
     devp = cache.device_path(part)
     desp = getattr(a, "output_design", None) or cache.design_path(dcp, routing)
+    if not routing and not os.path.exists(desp) and os.path.exists(cache.design_path(dcp, True)):
+        desp = cache.design_path(dcp, True)     # an export with routing has it all
     refresh = getattr(a, "refresh", False)
     if refresh or not os.path.exists(desp) or not os.path.exists(devp):
         args = ["design", os.path.abspath(dcp), desp]
@@ -63,23 +65,45 @@ def export(a, src):
         _log(f"export done in {time.time() - t0:.0f} s")
     des = load_design(desp)
     des.source = dcp
+    if not routing:
+        des.pips = {}
     return load_device(devp), des, desp
 
 
-def _groups(a, des):
-    from .placement import group_cells
-    return group_cells(des, patterns=a.group, depth=a.depth, max_groups=min(a.max_groups, 8))
+def _render_options(a):
+    """Highlight entries and render options: the command line wins over the
+    [options] of the highlight file."""
+    from .highlight import Entry, load_config
+    entries, opts = [], {}
+    if a.highlight:
+        try:
+            cfg = load_config(a.highlight)
+        except (OSError, ValueError) as e:
+            raise SystemExit(f"implview: {e}")
+        entries, opts = cfg.entries, cfg.options
+    entries += [Entry(g) for g in a.group or []]
+    pick = lambda k, d: getattr(a, k) if getattr(a, k) is not None else opts.get(k, d)
+    return entries, {"theme": pick("theme", "light"), "stats": pick("stats", False),
+                     "labels": pick("labels", True), "hide_other": opts.get("others") == "hide"}
 
 
 def cmd_render(a):
     from .layout import build_layout
-    from .placement import build_placement
+    from .placement import build_placement, group_cells
+    entries, opt = _render_options(a)
     dev, des, _ = export(a, a.input)
     lay = build_layout(dev)
-    groups, cg = _groups(a, des)
-    place = build_placement(dev, des, groups, cg)
+    groups, cg, unmatched = group_cells(des, min(a.max_groups, 8), entries, a.depth)
+    for p in unmatched:
+        _log(f"warning: highlight path {p!r} matches nothing")
+    place = build_placement(dev, des, groups, cg, opt["hide_other"])
     if place.missing:
         _log(f"warning: {place.missing} cells are on sites the device file does not have")
+    if a.save_highlight:
+        from .highlight import write_config
+        from .render import group_colors
+        write_config(a.save_highlight, groups, group_colors("light", groups), des.top)
+        _log(f"highlight file written to {a.save_highlight}")
     outs = a.output or [f"{des.top or 'design'}.png", f"{des.top or 'design'}.pdf"]
     if a.outdir:
         os.makedirs(a.outdir, exist_ok=True)
@@ -89,7 +113,8 @@ def cmd_render(a):
     written = []
     if pics:
         from .render import write_outputs
-        written += write_outputs(pics, dev, lay, des, place, a.theme, not a.no_labels)
+        written += write_outputs(pics, dev, lay, des, place, opt["theme"], opt["labels"],
+                                 opt["stats"])
     if html:
         from .html import write_html
         for o in html:
@@ -152,12 +177,20 @@ def main(argv=None):
                    help="output file, by extension: .png .pdf .svg .html (repeatable; "
                         "default <top>.png and <top>.pdf)")
     p.add_argument("-O", "--outdir", help="directory for the outputs")
-    p.add_argument("--theme", choices=("light", "dark"), default="light")
-    p.add_argument("-g", "--group", action="append",
-                   help="hierarchy path (glob) to color as one group, repeatable, in order")
+    p.add_argument("--theme", choices=("light", "dark"), help="default light")
+    p.add_argument("-H", "--highlight", metavar="FILE",
+                   help="highlight file (TOML): which hierarchy to color and how")
+    p.add_argument("-g", "--group", action="append", metavar="PATH",
+                   help="hierarchy path to color, palette colors, repeatable (* inside a "
+                        "level, ** any depth)")
     p.add_argument("--depth", type=int, help="group by hierarchy cut at this depth")
-    p.add_argument("--max-groups", type=int, default=8, help="colored groups (max 8)")
-    p.add_argument("--no-labels", action="store_true", help="no group/clock region labels")
+    p.add_argument("--max-groups", type=int, default=8, help="automatic groups (max 8)")
+    p.add_argument("--stats", action=argparse.BooleanOptionalAction,
+                   help="utilization table and cells per group in the panel (default off)")
+    p.add_argument("--labels", action=argparse.BooleanOptionalAction,
+                   help="group and clock region names on the device (default on)")
+    p.add_argument("--save-highlight", metavar="FILE",
+                   help="write the groups used as a highlight file, to edit")
     p.set_defaults(func=cmd_render)
 
     p = sub.add_parser("export", help="only export a design (and its device) from Vivado")

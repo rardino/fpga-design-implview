@@ -29,35 +29,47 @@ class Placement:
     groups: list                    # hier.Group, color order
     cell_group: list                # group index of each design cell
     cell_site: np.ndarray           # site index of each cell, -1 if not in the device
-    site_group: np.ndarray          # group of each site (most of its cells), -1 unused
+    site_group: np.ndarray          # group shown on each site, -1 not colored
+    site_used: np.ndarray           # site holds cells (for the utilization)
     site_cells: dict = field(default_factory=dict)  # site index -> [cell indices]
     utilization: list = field(default_factory=list)  # (label, used, total)
     missing: int = 0                # cells on sites the device file does not have
-
-    def used(self):
-        return self.site_group >= 0
+    hide_other: bool = False        # OTHER cells are not colored
 
 
-def group_cells(design, mode="auto", max_groups=8, patterns=None, depth=None):
-    if patterns:
-        return hier.pattern_groups(design.cells, patterns)
+def group_cells(design, max_groups=8, entries=None, depth=None):
+    """(groups, cell group of each cell, highlight paths that matched nothing)."""
+    if entries:
+        from .highlight import manual_groups
+        from .render import THEMES
+        return manual_groups(design.cells, entries, THEMES["light"]["series"],
+                             THEMES["dark"]["series"])
     if depth is not None:
-        return hier.depth_groups(design.cells, depth, max_groups)
-    return hier.auto_groups(design.cells, max_groups)
+        return (*hier.depth_groups(design.cells, depth, max_groups), [])
+    return (*hier.auto_groups(design.cells, max_groups), [])
 
 
-def build_placement(dev, design, groups, cell_group):
+def build_placement(dev, design, groups, cell_group, hide_other=False):
+    """A site shows the group of most of its cells; listed groups win over
+    OTHER, and with hide_other a site with only OTHER cells is not colored."""
     sidx = dev.site_index()
     cell_site = np.array([sidx.get(c.site, -1) for c in design.cells], dtype=np.int64)
     site_cells = {}
     for i, s in enumerate(cell_site.tolist()):
         if s >= 0:
             site_cells.setdefault(s, []).append(i)
+    other = next((k for k, g in enumerate(groups) if g.name == hier.OTHER), -1)
     site_group = np.full(len(dev.sites), -1, np.int32)
+    site_used = np.zeros(len(dev.sites), bool)
     for s, cells in site_cells.items():
-        site_group[s] = Counter(cell_group[i] for i in cells).most_common(1)[0][0]
-    p = Placement(groups, cell_group, cell_site, site_group, site_cells,
-                  missing=int((cell_site < 0).sum()))
+        n = Counter(cell_group[i] for i in cells)
+        if len(n) > 1:
+            n.pop(other, None)
+        g = n.most_common(1)[0][0]
+        site_used[s] = True
+        site_group[s] = -1 if hide_other and g == other else g
+    p = Placement(groups, cell_group, cell_site, site_group, site_used, site_cells,
+                  missing=int((cell_site < 0).sum()), hide_other=hide_other)
     p.utilization = utilization(dev, design, p)
     return p
 
@@ -65,7 +77,7 @@ def build_placement(dev, design, groups, cell_group):
 def utilization(dev, design, p):
     rows = []
     prefix = [s.prefix for s in dev.sites]
-    used = p.site_group >= 0
+    used = p.site_used
     # LUT and FF from the BELs, so the count is the same on every family
     luts, ffs = set(), 0
     for c, s in zip(design.cells, p.cell_site.tolist()):

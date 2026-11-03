@@ -44,11 +44,15 @@ THEMES = {
 
 
 def group_colors(theme, groups):
+    """Highlight file colors where given, else the palette in order."""
     t = THEMES[theme]
     out = []
     k = 0
     for g in groups:
-        if g.name == hier.OTHER or k >= len(t["series"]):
+        own = g.color_dark if theme == "dark" and g.color_dark else g.color
+        if own:
+            out.append(own)
+        elif g.name == hier.OTHER or k >= len(t["series"]):
             out.append(t["other"])
         else:
             out.append(t["series"][k])
@@ -210,7 +214,25 @@ def _group_labels(ax, lay, place, colors, t, ppu, dpi):
                 fontweight="bold", zorder=8, path_effects=_halo(t["surface"]))
 
 
-def _panel(pax, dev, design, place, colors, t, page):
+def _legend_rows(groups, colors):
+    """(label, [colors], cells) per legend row; a highlight entry with many
+    instances is one row with its shades."""
+    rows, k = [], 0
+    while k < len(groups):
+        g = groups[k]
+        j = k + 1
+        while g.entry >= 0 and j < len(groups) and groups[j].entry == g.entry:
+            j += 1
+        if j - k > 6:
+            lab = g.label.rsplit(" ", 1)[0] if " " in g.label else g.name
+            rows.append((f"{lab} ({j - k})", colors[k:j], sum(x.cells for x in groups[k:j])))
+        else:
+            rows += [(x.label, [c], x.cells) for x, c in zip(groups[k:j], colors[k:j])]
+        k = j
+    return rows
+
+
+def _panel(pax, dev, design, place, colors, t, page, stats=False):
     y = 1.0
     lh = 0.018
 
@@ -238,45 +260,51 @@ def _panel(pax, dev, design, place, colors, t, page):
             parts.append(f"WHS {whs:+.3f} ns" + ("  (fails)" if whs < 0 else ""))
         line("    ".join(parts), 10, dy=2.0)
 
-    line("Utilization", 11, weight="bold", dy=1.5)
-    for label, used, total in place.utilization:
-        if not total:
-            continue
-        pct = 100.0 * used / total
-        u = f"{used:,.1f}" if isinstance(used, float) and not used.is_integer() else f"{int(used):,}"
-        pax.text(0.0, y, label, transform=pax.transAxes, ha="left", va="top",
-                 fontsize=9, color=t["text2"])
-        pax.text(0.62, y, f"{u} / {total:,}", transform=pax.transAxes, ha="right",
-                 va="top", fontsize=9, color=t["text"], family="monospace")
-        pax.text(0.80, y, f"{pct:5.1f}%", transform=pax.transAxes, ha="right", va="top",
-                 fontsize=9, color=t["text"], family="monospace")
-        y -= lh * 1.0
-    y -= lh * 0.8
+    if stats:
+        line("Utilization", 11, weight="bold", dy=1.5)
+        for label, used, total in place.utilization:
+            if not total:
+                continue
+            pct = 100.0 * used / total
+            u = f"{used:,.1f}" if isinstance(used, float) and not used.is_integer() else f"{int(used):,}"
+            pax.text(0.0, y, label, transform=pax.transAxes, ha="left", va="top",
+                     fontsize=9, color=t["text2"])
+            pax.text(0.62, y, f"{u} / {total:,}", transform=pax.transAxes, ha="right",
+                     va="top", fontsize=9, color=t["text"], family="monospace")
+            pax.text(0.80, y, f"{pct:5.1f}%", transform=pax.transAxes, ha="right", va="top",
+                     fontsize=9, color=t["text"], family="monospace")
+            y -= lh * 1.0
+        y -= lh * 0.8
 
     if page == "routing":
         line("Routing", 11, weight="bold", dy=1.5)
         line("Each interconnect tile colors the logic", 9, color=t["text2"])
         line("next to it by how many of its PIPs", 9, color=t["text2"])
         line("the routed nets use.", 9, color=t["text2"], dy=1.6)
-        return
+        return y
 
     line("Hierarchy", 11, weight="bold", dy=1.5)
     total = max(sum(g.cells for g in place.groups), 1)
-    for g, c in zip(place.groups, colors):
-        _swatch(pax, y, c, t["surface"])
-        lab = _elide(g.label, 40)
-        pax.text(0.06, y, lab, transform=pax.transAxes, ha="left", va="top",
+    groups, cols = zip(*[(g, c) for g, c in zip(place.groups, colors)
+                         if not (place.hide_other and g.name == hier.OTHER)]) or ((), ())
+    for label, cs, cells in _legend_rows(list(groups), list(cols)):
+        _swatch(pax, y, cs, t["surface"])
+        pax.text(0.06, y, _elide(label, 40), transform=pax.transAxes, ha="left", va="top",
                  fontsize=9, color=t["text"])
-        pax.text(0.98, y, f"{g.cells:,}  {100.0 * g.cells / total:4.1f}%",
-                 transform=pax.transAxes, ha="right", va="top", fontsize=9,
-                 color=t["text2"], family="monospace")
+        if stats:
+            pax.text(0.98, y, f"{cells:,}  {100.0 * cells / total:4.1f}%",
+                     transform=pax.transAxes, ha="right", va="top", fontsize=9,
+                     color=t["text2"], family="monospace")
         y -= lh * 1.15
     _swatch(pax, y, t["unused"], t["surface"])
     pax.text(0.06, y, "unused site", transform=pax.transAxes, ha="left", va="top",
              fontsize=9, color=t["text2"])
     y -= lh * 1.6
-    line("Cells per group; a site takes the color", 8, color=t["muted"])
-    line("of most of the cells placed in it.", 8, color=t["muted"])
+    if stats:
+        line("Cells per group; a site takes the color", 8, color=t["muted"])
+        line("of most of the cells placed in it.", 8, color=t["muted"])
+    else:
+        line("A site takes the color of most of its cells.", 8, color=t["muted"])
 
 
 def _elide(s, n):
@@ -291,11 +319,17 @@ def _elide(s, n):
 
 
 def _swatch(pax, y, color, edge):
-    pax.add_patch(Rectangle((0.0, y - 0.011), 0.04, 0.010, transform=pax.transAxes,
-                            facecolor=color, edgecolor=edge, linewidth=0.5))
+    """A color, or a list of colors side by side (shades of one entry)."""
+    cs = color if isinstance(color, (list, tuple)) else [color]
+    w = 0.04 / len(cs)
+    for k, c in enumerate(cs):
+        pax.add_patch(Rectangle((k * w, y - 0.011), w, 0.010, transform=pax.transAxes,
+                                facecolor=c, edgecolor=edge if len(cs) == 1 else "none",
+                                linewidth=0.5))
 
 
-def placement_figure(dev, lay, design, place, theme="light", labels=True, pblocks=True):
+def placement_figure(dev, lay, design, place, theme="light", labels=True, stats=False,
+                     pblocks=True):
     t = THEMES[theme]
     colors = group_colors(theme, place.groups)
     fig, ax, pax, dpi = _figure(lay, theme)
@@ -321,7 +355,7 @@ def placement_figure(dev, lay, design, place, theme="light", labels=True, pblock
                         fontsize=fs, color=t["text"], zorder=8, path_effects=_halo(t["surface"]))
     if labels:
         _group_labels(ax, lay, place, colors, t, *_scale(lay))
-    _panel(pax, dev, design, place, colors, t, "placement")
+    _panel(pax, dev, design, place, colors, t, "placement", stats)
     return fig, dpi
 
 
@@ -340,7 +374,7 @@ def _int_spans(dev, lay):
     return r
 
 
-def routing_figure(dev, lay, design, place, theme="light", labels=True):
+def routing_figure(dev, lay, design, place, theme="light", labels=True, stats=False):
     t = THEMES[theme]
     fig, ax, pax, dpi = _figure(lay, theme)
     _device_frame(ax, dev, lay, t, labels)
@@ -360,9 +394,9 @@ def routing_figure(dev, lay, design, place, theme="light", labels=True):
     site_color = [t["unused"]] * len(dev.sites)
     _sites(ax, lay, site_color, ~lay.site_overlay, 2)
     _rects(ax, _int_spans(dev, lay)[hot], cols[hot], 3)
-    _panel(pax, dev, design, place, [], t, "routing")
+    y = _panel(pax, dev, design, place, [], t, "routing", stats)
 
-    cax = pax.inset_axes([0.0, 0.42, 0.6, 0.012])
+    cax = pax.inset_axes([0.0, y - 0.05, 0.6, 0.012])
     cb = fig.colorbar(matplotlib.cm.ScalarMappable(cmap=cmap, norm=matplotlib.colors.Normalize(0, top)),
                       cax=cax, orientation="horizontal")
     cb.outline.set_visible(False)
@@ -372,11 +406,12 @@ def routing_figure(dev, lay, design, place, theme="light", labels=True):
     return fig, dpi
 
 
-def write_outputs(paths, dev, lay, design, place, theme="light", labels=True):
+def write_outputs(paths, dev, lay, design, place, theme="light", labels=True, stats=False):
     """Write each path by its extension (.png, .pdf, .svg)."""
-    pages = [("placement", lambda: placement_figure(dev, lay, design, place, theme, labels))]
+    pages = [("placement", lambda: placement_figure(dev, lay, design, place, theme, labels, stats))]
     if design.pips:
-        pages.append(("routing", lambda: routing_figure(dev, lay, design, place, theme, labels)))
+        pages.append(("routing", lambda: routing_figure(dev, lay, design, place, theme, labels,
+                                                        stats)))
     figs = {}
 
     def get(name, make):

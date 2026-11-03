@@ -7,7 +7,6 @@ walked through for free, so a design whose top only instantiates one core is
 grouped inside that core.
 """
 
-import fnmatch
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 
@@ -20,6 +19,9 @@ class Group:
     name: str               # hierarchy path ("" for the top level), or OTHER
     label: str              # what the legend shows
     cells: int = 0
+    color: str = None       # set by a highlight file, else the palette
+    color_dark: str = None
+    entry: int = -1         # highlight entry it comes from
 
 
 def _parent(path):
@@ -164,29 +166,6 @@ def depth_groups(cells, depth, max_groups=8, min_share=0.005):
     paths = sorted({"/".join(_cell_parent(c.name).split("/")[:depth]) for c in cells})
     groups, cell_group = _finish(cells, paths, [_label(p, "") for p in paths], min_share)
     return _cap(groups, cell_group, max_groups)
-
-
-def pattern_groups(cells, patterns):
-    """One group per pattern (glob on the hierarchy path), in the given order."""
-    groups = [Group(p, p) for p in patterns]
-    other = len(groups)
-    cell_group = []
-    cache = {}
-    for c in cells:
-        p = _cell_parent(c.name)
-        if p not in cache:
-            cache[p] = other
-            for i, pat in enumerate(patterns):
-                if fnmatch.fnmatchcase(p, pat) or fnmatch.fnmatchcase(p, pat + "/*"):
-                    cache[p] = i
-                    break
-        cell_group.append(cache[p])
-    n = Counter(cell_group)
-    for i, g in enumerate(groups):
-        g.cells = n[i]
-    if n[other]:
-        groups.append(Group(OTHER, OTHER, n[other]))
-    return groups, cell_group
 
 
 def _cap(groups, cell_group, max_groups):

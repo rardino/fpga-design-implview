@@ -1,0 +1,41 @@
+# Example highlight file, for a design with this hierarchy:
+#   u_core/u_fft, u_core/gen_ch[0..3].u_filter, u_core/u_ctrl,
+#   u_io/u_adc_a, u_io/u_adc_b, u_io/u_pcie, u_io/u_ddr
+#
+#   implview render path/to/impl_1 -H examples/highlight.toml
+#
+# path: hierarchy path, * inside one level, ** any depth, brackets are literal.
+# A path matching several instances (a generate loop) gets one shade each.
+
+[[highlight]]
+path = "u_core/u_fft"
+color = "#2a78d6"
+label = "FFT"
+
+[[highlight]]
+path = "u_core/gen_ch[*].u_filter"
+color = ["#8fe0bb", "#0f6e4b"]      # channel 0 light, channel 3 dark
+label = "filter"
+
+[[highlight]]
+path = "u_core/u_ctrl"
+color = "#eda100"
+label = "control"
+
+[[highlight]]
+path = "u_io/u_adc_*"                # u_adc_a and u_adc_b
+color = "#e87ba4"
+label = "ADC"
+
+[[highlight]]
+path = "u_io/u_pcie"
+color = "#eb6834"
+label = "PCIe"
+
+[[highlight]]
+path = "u_io/u_ddr"
+color = "#e34948"
+label = "DDR"
+
+[options]
+others = "grey"                      # everything else; "hide" to leave it uncolored

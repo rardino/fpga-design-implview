@@ -9,7 +9,7 @@ description = "Pictures and an interactive viewer of Vivado implemented designs:
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [{ name = "Rocco Ardino", email = "roccoardino@gmail.com" }]
 dependencies = ["numpy", "matplotlib"]
 
