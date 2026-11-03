@@ -94,11 +94,14 @@ def _scale(lay):
     return min(max(6.0, 2400.0 / long_side), 9000.0 / long_side), 200
 
 
-def _figure(lay, theme, panel_w=5.0):
-    """Device axes on the left, information panel on the right."""
+def _figure(lay, theme, panel=True, panel_w=5.0):
+    """Device axes on the left, information panel on the right (pax is None
+    without the panel)."""
     ppu, dpi = _scale(lay)
     dev_w, dev_h = lay.width * ppu / dpi, lay.height * ppu / dpi
     margin = 0.25
+    if not panel:
+        panel_w = -margin
     fig_w, fig_h = dev_w + panel_w + 3 * margin, dev_h + 2 * margin
     fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi)
     fig.patch.set_facecolor(THEMES[theme]["surface"])
@@ -107,6 +110,8 @@ def _figure(lay, theme, panel_w=5.0):
     ax.set_ylim(lay.height, 0)
     ax.set_aspect("equal")
     ax.axis("off")
+    if not panel:
+        return fig, ax, None, dpi
     pax = fig.add_axes([(2 * margin + dev_w) / fig_w, margin / fig_h,
                         panel_w / fig_w, dev_h / fig_h])
     pax.axis("off")
@@ -168,9 +173,11 @@ def pblock_rects(dev, lay, pblocks):
     return out
 
 
-def label_positions(lay, place, names, unit, fs=9.0):
+def label_positions(lay, place, names, unit, fs=9.0, pad=0.0):
     """Where to name each group: the densest part of its sites, moved so the
-    labels do not overlap. unit is the size of one text point in layout units.
+    labels do not overlap (large groups pick first; a label that finds no free
+    spot goes on its densest part anyway). unit is the size of one text point
+    in layout units, pad the padding around the text in font sizes.
     Returns [(group index, x, y)]."""
     r = lay.site_rect
     used = np.nonzero(place.site_group >= 0)[0]
@@ -178,6 +185,43 @@ def label_positions(lay, place, names, unit, fs=9.0):
     out = []
     if not len(used):
         return out
+    cx = (r[used, 0] + r[used, 2]) / 2
+    cy = (r[used, 1] + r[used, 3]) / 2
+    sg = place.site_group[used]
+    bins = 24
+    placed = []
+    groups = [gi for gi, g in enumerate(place.groups) if g.name != hier.OTHER and (sg == gi).any()]
+    for gi in sorted(groups, key=lambda gi: -int((sg == gi).sum())):
+        m = sg == gi
+        h, xe, ye = np.histogram2d(cx[m], cy[m], bins=bins,
+                                   range=[[0, lay.width], [0, lay.height]])
+        w = (0.62 * len(names[gi]) + 2 * pad) * fs * unit
+        ht = (1.4 + 2 * pad) * fs * unit
+        steps = [(0, 0), (0, -ht), (0, ht), (-w / 2, 0), (w / 2, 0), (0, -2 * ht), (0, 2 * ht)]
+        first = None
+        for k in np.argsort(h, axis=None)[::-1][:40]:
+            i, j = np.unravel_index(k, h.shape)
+            if h[i, j] < 1:
+                break
+            sel = m & (cx >= xe[i]) & (cx <= xe[i + 1]) & (cy >= ye[j]) & (cy <= ye[j + 1])
+            bx, by = float(np.median(cx[sel])), float(np.median(cy[sel]))
+            for dx, dy in steps:
+                x = float(np.clip(bx + dx, w / 2, lay.width - w / 2))
+                y = float(np.clip(by + dy, ht / 2, lay.height - ht / 2))
+                first = first or (x, y)
+                box = (x - w / 2, y - ht / 2, x + w / 2, y + ht / 2)
+                if not any(box[0] < b[2] and b[0] < box[2] and box[1] < b[3] and b[1] < box[3]
+                           for b in placed):
+                    break
+            else:
+                continue
+            break
+        else:
+            x, y = first
+            box = (x - w / 2, y - ht / 2, x + w / 2, y + ht / 2)
+        placed.append(box)
+        out.append((gi, x, y))
+    return out
     cx = (r[used, 0] + r[used, 2]) / 2
     cy = (r[used, 1] + r[used, 3]) / 2
     bins = 24
@@ -188,8 +232,8 @@ def label_positions(lay, place, names, unit, fs=9.0):
             continue
         h, xe, ye = np.histogram2d(cx[m], cy[m], bins=bins,
                                    range=[[0, lay.width], [0, lay.height]])
-        w = 0.62 * fs * len(names[gi]) * unit
-        ht = 1.4 * fs * unit
+        w = (0.62 * len(names[gi]) + 2 * pad) * fs * unit
+        ht = (1.4 + 2 * pad) * fs * unit
         for k in np.argsort(h, axis=None)[::-1][:12]:
             i, j = np.unravel_index(k, h.shape)
             if h[i, j] < 2:
@@ -206,12 +250,52 @@ def label_positions(lay, place, names, unit, fs=9.0):
     return out
 
 
-def _group_labels(ax, lay, place, colors, t, ppu, dpi):
+# Font files of the group names (matplotlib cannot tell the weights of the
+# Ubuntu files apart), then families with a real bold.
+LABEL_FILES = {"pill": ("Ubuntu-M.ttf", "Ubuntu-B.ttf"), "text": ("Ubuntu-B.ttf",)}
+LABEL_FAMILIES = ["Liberation Sans", "DejaVu Sans"]
+
+
+def label_font(style, size):
+    from matplotlib.font_manager import FontProperties, fontManager
+    files = {os.path.basename(f.fname): f.fname for f in fontManager.ttflist}
+    for name in LABEL_FILES[style]:
+        if name in files:
+            return FontProperties(fname=files[name], size=size)
+    return FontProperties(family=LABEL_FAMILIES, weight="bold", size=size)
+
+
+def _luminance(c):
+    def lin(v):
+        return v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4
+    r, g, b = (lin(v) for v in matplotlib.colors.to_rgb(c))
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def text_on(fill):
+    """White or near-black text, whichever has more contrast on fill."""
+    lum = _luminance(fill)
+    return "#ffffff" if (1.05 / (lum + 0.05)) >= ((lum + 0.05) / 0.05) else "#111111"
+
+
+def _group_labels(ax, lay, place, colors, t, ppu, dpi, size=10.0, style="pill"):
+    """Group names on the device: rounded badges in the group color with a
+    soft shadow ("pill"), or plain text with a halo ("text")."""
     names = hier.short_labels(place.groups)
-    fs = 9.0
-    for gi, x, y in label_positions(lay, place, names, dpi / 72.0 / ppu, fs):
-        ax.text(x, y, names[gi], ha="center", va="center", color=t["text"], fontsize=fs,
-                fontweight="bold", zorder=8, path_effects=_halo(t["surface"]))
+    pad = 0.45 if style == "pill" else 0.0
+    unit = dpi / 72.0 / ppu
+    font = label_font(style, size)
+    for gi, x, y in label_positions(lay, place, names, unit, size, pad):
+        if style == "pill":
+            txt = ax.text(x, y, names[gi], ha="center", va="center", fontproperties=font,
+                          color=text_on(colors[gi]), zorder=8,
+                          bbox=dict(boxstyle=f"round,pad={pad},rounding_size=0.9",
+                                    fc=colors[gi], ec=t["surface"], lw=1.2))
+            txt.get_bbox_patch().set_path_effects(
+                [pe.withSimplePatchShadow(offset=(1.5, -1.5), shadow_rgbFace="#000000", alpha=0.3)])
+        else:
+            ax.text(x, y, names[gi], ha="center", va="center", color=t["text"],
+                    fontproperties=font, zorder=8, path_effects=_halo(t["surface"]))
 
 
 def _legend_rows(groups, colors):
@@ -329,10 +413,10 @@ def _swatch(pax, y, color, edge):
 
 
 def placement_figure(dev, lay, design, place, theme="light", labels=True, stats=False,
-                     pblocks=True):
+                     panel=True, label_size=10.0, label_style="pill", pblocks=True):
     t = THEMES[theme]
     colors = group_colors(theme, place.groups)
-    fig, ax, pax, dpi = _figure(lay, theme)
+    fig, ax, pax, dpi = _figure(lay, theme, panel)
     _device_frame(ax, dev, lay, t, labels)
     _rects(ax, lay.int_rect, [t["int_tile"]] * len(lay.int_rect), 1)
 
@@ -354,8 +438,9 @@ def placement_figure(dev, lay, design, place, theme="light", labels=True, stats=
                 ax.text(rects[0][0] + 0.5, rects[0][3] - 0.5, name, ha="left", va="bottom",
                         fontsize=fs, color=t["text"], zorder=8, path_effects=_halo(t["surface"]))
     if labels:
-        _group_labels(ax, lay, place, colors, t, *_scale(lay))
-    _panel(pax, dev, design, place, colors, t, "placement", stats)
+        _group_labels(ax, lay, place, colors, t, *_scale(lay), label_size, label_style)
+    if pax is not None:
+        _panel(pax, dev, design, place, colors, t, "placement", stats)
     return fig, dpi
 
 
@@ -374,9 +459,10 @@ def _int_spans(dev, lay):
     return r
 
 
-def routing_figure(dev, lay, design, place, theme="light", labels=True, stats=False):
+def routing_figure(dev, lay, design, place, theme="light", labels=True, stats=False,
+                   panel=True, **_):
     t = THEMES[theme]
-    fig, ax, pax, dpi = _figure(lay, theme)
+    fig, ax, pax, dpi = _figure(lay, theme, panel)
     _device_frame(ax, dev, lay, t, labels)
     tix = dev.tile_index()
     use = np.zeros(len(lay.int_tiles))
@@ -394,6 +480,8 @@ def routing_figure(dev, lay, design, place, theme="light", labels=True, stats=Fa
     site_color = [t["unused"]] * len(dev.sites)
     _sites(ax, lay, site_color, ~lay.site_overlay, 2)
     _rects(ax, _int_spans(dev, lay)[hot], cols[hot], 3)
+    if pax is None:
+        return fig, dpi
     y = _panel(pax, dev, design, place, [], t, "routing", stats)
 
     cax = pax.inset_axes([0.0, y - 0.05, 0.6, 0.012])
@@ -406,12 +494,12 @@ def routing_figure(dev, lay, design, place, theme="light", labels=True, stats=Fa
     return fig, dpi
 
 
-def write_outputs(paths, dev, lay, design, place, theme="light", labels=True, stats=False):
-    """Write each path by its extension (.png, .pdf, .svg)."""
-    pages = [("placement", lambda: placement_figure(dev, lay, design, place, theme, labels, stats))]
+def write_outputs(paths, dev, lay, design, place, **opts):
+    """Write each path by its extension (.png, .pdf, .svg). opts go to the
+    figures: theme, labels, stats, panel, label_size, label_style."""
+    pages = [("placement", lambda: placement_figure(dev, lay, design, place, **opts))]
     if design.pips:
-        pages.append(("routing", lambda: routing_figure(dev, lay, design, place, theme, labels,
-                                                        stats)))
+        pages.append(("routing", lambda: routing_figure(dev, lay, design, place, **opts)))
     figs = {}
 
     def get(name, make):

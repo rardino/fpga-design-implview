@@ -116,3 +116,33 @@ def test_cli_highlight_file(files, tmp_path, monkeypatch, capsys):
     assert cfg.entries and all(e.color for e in cfg.entries)
     main(["render", str(des), "-O", str(tmp_path / "b"), "-o", "b.png", "-H", str(saved), "--stats"])
     assert capsys.readouterr().out.split()[-2].endswith("b.png")
+
+
+def test_no_panel_and_labels(loaded):
+    from implview.render import label_positions, routing_figure, text_on
+    dev, des, lay = loaded
+    groups, cg, _ = group_cells(des)
+    p = build_placement(dev, des, groups, cg)
+    fig, _ = placement_figure(dev, lay, des, p, panel=False, label_size=30)
+    assert len(fig.axes) == 1
+    texts = [t for t in fig.axes[0].texts if t.get_bbox_patch() is not None]
+    assert texts and all(t.get_fontsize() == 30 for t in texts)
+    fig, _ = routing_figure(dev, lay, des, p, panel=False)
+    assert len(fig.axes) == 1
+    # every group gets a name, even with labels much larger than the device
+    names = hier.short_labels(groups)
+    got = {gi for gi, _, _ in label_positions(lay, p, names, unit=1.0, fs=40)}
+    assert got == {gi for gi, g in enumerate(groups)
+                   if g.name != hier.OTHER and (p.site_group == gi).any()}
+    assert text_on("#ffd400") == "#111111" and text_on("#0f3d8a") == "#ffffff"
+
+
+def test_label_options(tmp_path):
+    p = tmp_path / "h.toml"
+    p.write_text('[options]\npanel = false\nlabel_size = 14\nlabel_style = "text"\n')
+    assert load_config(p).options == {"panel": False, "label_size": 14, "label_style": "text"}
+    for bad in ('[options]\nlabel_size = "big"\n', '[options]\nlabel_size = 0\n',
+                '[options]\nlabel_style = "neon"\n', '[options]\npanel = 1\n'):
+        p.write_text(bad)
+        with pytest.raises(ValueError):
+            load_config(p)

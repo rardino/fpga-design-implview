@@ -118,10 +118,21 @@ palette without a file.
 
 A site takes the color of most of its cells, listed groups before "(other)".
 
-### Panel
+### Panel and labels
 
-The panel has the design, part, Vivado version and WNS/WHS. `--stats` adds the
-utilization table and the cells per group (the HTML viewer always shows them).
+The panel on the right has the design, part, Vivado version, WNS/WHS and the legend.
+`--stats` adds the utilization table and the cells per group (the HTML viewer always
+shows them); `--no-panel` leaves the device alone in the picture.
+
+Each group is named on the device where most of its sites are, as a badge in its color
+(`--label-style text` for plain names), large groups first, without overlaps. The size
+is `--label-size PT` (default 10); `--no-labels` removes them with the clock region
+names. The same settings go in the `[options]` of a highlight file: `panel`, `stats`,
+`labels`, `label_size`, `label_style`, `theme`.
+
+```sh
+implview render path/to/impl_1 -H highlight.toml --no-panel --label-size 16 --theme dark
+```
 
 ### The viewer
 

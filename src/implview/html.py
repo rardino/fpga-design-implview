@@ -14,7 +14,8 @@ import os
 import numpy as np
 
 from . import hier
-from .render import THEMES, _int_spans, block_label, group_colors, label_positions, pblock_rects
+from .render import (THEMES, _int_spans, block_label, group_colors, label_positions, pblock_rects,
+                     text_on)
 
 Q = 64          # layout units are stored as uint16 in 1/Q steps
 
@@ -117,7 +118,7 @@ def write_html(path, dev, lay, design, place):
 
     names = hier.short_labels(place.groups)
     unit = max(lay.width, lay.height) / 900.0
-    labels = [(names[gi], x, y) for gi, x, y in label_positions(lay, place, names, unit, 9.0)]
+    labels = [(gi, x, y) for gi, x, y in label_positions(lay, place, names, unit, 9.0, 0.45)]
     light, dark = group_colors("light", place.groups), group_colors("dark", place.groups)
     meta = {
         "top": design.top, "part": dev.part, "family": dev.info.get("family", ""),
@@ -130,14 +131,15 @@ def write_html(path, dev, lay, design, place):
         "odd": odd, "pins": {int(pos[i]): dev.pins[s.name] for i, s in enumerate(dev.sites)
                              if s.name in dev.pins and pos[i] >= 0},
         "paths": list(paths), "refs": list(refs), "bels": list(bels), "leaves": leaves,
-        "groups": [{"label": g.label, "short": n, "cells": g.cells, "light": a, "dark": b}
+        "groups": [{"label": g.label, "short": n, "cells": g.cells, "light": a, "dark": b,
+                    "ink_light": text_on(a), "ink_dark": text_on(b)}
                    for g, n, a, b in zip(place.groups, names, light, dark)],
         "util": [[lab, used, total] for lab, used, total in place.utilization],
         "clock_regions": [[cr.name, _q(r)] for cr, r in lay.cr_rect],
         "slrs": [[n, _q(r)] for n, r in lay.slr_rect] if len(lay.slr_rect) > 1 else [],
         "blocks": [[block_label(dev.tile_type[t]), _q(r)] for t, r in lay.block_rect.items()],
         "pblocks": [[n, [_q(r) for r in rects]] for n, rects in pblock_rects(dev, lay, design.pblocks)],
-        "labels": [[n, x, y] for n, x, y in labels],
+        "labels": [[gi, x, y] for gi, x, y in labels],
         "heat": heat,
         "themes": {k: {x: v[x] for x in ("surface", "text", "text2", "muted", "unused", "block",
                                          "context", "cr", "slr", "seq")}
@@ -370,6 +372,21 @@ function text(str, x, y, size, color, align, weight) {
   ctx.fillStyle = color; ctx.fillText(str, x, y);
 }
 
+// group name as a rounded badge in the group color, like the pictures
+function pill(str, x, y, g) {
+  ctx.font = "600 12px Ubuntu, system-ui, sans-serif";
+  const w = ctx.measureText(str).width + 14, h = 20;
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,0.3)"; ctx.shadowBlur = 3; ctx.shadowOffsetX = 1; ctx.shadowOffsetY = 1;
+  ctx.fillStyle = g[theme]; ctx.strokeStyle = T().surface; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(x - w / 2, y - h / 2, w, h, h / 2); else ctx.rect(x - w / 2, y - h / 2, w, h);
+  ctx.fill(); ctx.shadowColor = "transparent"; ctx.stroke();
+  ctx.restore();
+  ctx.fillStyle = g["ink_" + theme]; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText(str, x, y + 0.5);
+}
+
 function draw() {
   dirty = false;
   const t = T();
@@ -428,7 +445,7 @@ function draw() {
     }
   }
   if (layers.labels && !layers.routing && !match) {
-    for (const [name, x, y] of M.labels) text(name, sx(x), sy(y), 12, t.text, "center", 700);
+    for (const [g, x, y] of M.labels) pill(M.groups[g].short, sx(x), sy(y), M.groups[g]);
   }
   for (const [i, w] of [[hover, 1.5], [sel, 2.5]]) {
     if (i < 0) continue;

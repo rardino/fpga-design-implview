@@ -12,7 +12,8 @@
 
     [options]
     others = "grey"                     # cells not listed: "grey" or "hide"
-    theme = "dark"                      # also stats = true, labels = false
+    theme = "dark"                      # also stats, labels, panel (true/false),
+    label_size = 14                     # label_style ("pill" or "text")
 
 A path that matches several instances gives one group per instance, with shades
 of the color (one color: lighter to darker, a list: from the first to the last),
@@ -29,7 +30,9 @@ from matplotlib.colors import to_hex, to_rgb
 from .hier import OTHER, Group, _cell_parent, _parent
 
 ENTRY_KEYS = {"path", "color", "color_dark", "label", "gradient"}
-OPTION_KEYS = {"others": ("grey", "hide"), "theme": ("light", "dark"), "stats": None, "labels": None}
+# option -> allowed values, or the type
+OPTION_KEYS = {"others": ("grey", "hide"), "theme": ("light", "dark"), "label_style": ("pill", "text"),
+               "stats": bool, "labels": bool, "panel": bool, "label_size": (int, float)}
 
 
 @dataclass
@@ -103,10 +106,13 @@ def load_config(path):
         if k not in OPTION_KEYS:
             raise ValueError(f"{path}: unknown option {k!r}")
         allowed = OPTION_KEYS[k]
-        if allowed and v not in allowed:
-            raise ValueError(f"{path}: option {k} must be one of {', '.join(allowed)}")
-        if allowed is None and not isinstance(v, bool):
+        if isinstance(allowed, tuple) and isinstance(allowed[0], str):
+            if v not in allowed:
+                raise ValueError(f"{path}: option {k} must be one of {', '.join(allowed)}")
+        elif allowed is bool and not isinstance(v, bool):
             raise ValueError(f"{path}: option {k} must be true or false")
+        elif allowed is not bool and (isinstance(v, bool) or not isinstance(v, allowed) or v <= 0):
+            raise ValueError(f"{path}: option {k} must be a positive number")
         cfg.options[k] = v
     return cfg
 

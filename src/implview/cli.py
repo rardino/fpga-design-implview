@@ -84,7 +84,10 @@ def _render_options(a):
     entries += [Entry(g) for g in a.group or []]
     pick = lambda k, d: getattr(a, k) if getattr(a, k) is not None else opts.get(k, d)
     return entries, {"theme": pick("theme", "light"), "stats": pick("stats", False),
-                     "labels": pick("labels", True), "hide_other": opts.get("others") == "hide"}
+                     "labels": pick("labels", True), "panel": pick("panel", True),
+                     "label_size": pick("label_size", 10.0),
+                     "label_style": pick("label_style", "pill"),
+                     "hide_other": opts.get("others") == "hide"}
 
 
 def cmd_render(a):
@@ -113,8 +116,8 @@ def cmd_render(a):
     written = []
     if pics:
         from .render import write_outputs
-        written += write_outputs(pics, dev, lay, des, place, opt["theme"], opt["labels"],
-                                 opt["stats"])
+        written += write_outputs(pics, dev, lay, des, place,
+                                 **{k: v for k, v in opt.items() if k != "hide_other"})
     if html:
         from .html import write_html
         for o in html:
@@ -189,6 +192,12 @@ def main(argv=None):
                    help="utilization table and cells per group in the panel (default off)")
     p.add_argument("--labels", action=argparse.BooleanOptionalAction,
                    help="group and clock region names on the device (default on)")
+    p.add_argument("--label-size", type=float, metavar="PT",
+                   help="font size of the group names on the device (default 10)")
+    p.add_argument("--label-style", choices=("pill", "text"),
+                   help="group names as colored badges (default) or plain text")
+    p.add_argument("--panel", action=argparse.BooleanOptionalAction,
+                   help="design, part and legend on the right (default on)")
     p.add_argument("--save-highlight", metavar="FILE",
                    help="write the groups used as a highlight file, to edit")
     p.set_defaults(func=cmd_render)
