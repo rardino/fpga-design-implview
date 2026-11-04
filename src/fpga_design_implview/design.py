@@ -38,6 +38,13 @@ class Design:
     def group_counts(self):
         return Counter(c.group for c in self.cells)
 
+    def unplaced(self):
+        """Primitive cells without a site, None for exports that do not say."""
+        try:
+            return max(int(self.info["primitives"]) - len(self.cells), 0)
+        except (KeyError, ValueError):
+            return None
+
 
 def load_design(path):
     d = Design()

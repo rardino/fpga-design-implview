@@ -127,8 +127,13 @@ proc ::implview::export_design {path args} {
     puts $f "wns\t[_slack -setup]"
     puts $f "whs\t[_slack -hold]"
 
+    # primitives that need a site (all but the VCC/GND drivers): more than the
+    # U records below when the checkpoint is not placed (synthesized netlist)
+    set prims [get_cells -hierarchical -quiet -filter {IS_PRIMITIVE && REF_NAME != VCC && REF_NAME != GND}]
+    puts $f "primitives\t[llength $prims]"
+
     # U site bel ref_name primitive_group cell
-    set cells [get_cells -hierarchical -quiet -filter {IS_PRIMITIVE && LOC != ""}]
+    set cells [filter -quiet $prims {LOC != ""}]
     if {[llength $cells]} {
         foreach c $cells l [get_property LOC $cells] b [get_property BEL $cells] \
                 r [get_property REF_NAME $cells] g [get_property PRIMITIVE_GROUP $cells] {

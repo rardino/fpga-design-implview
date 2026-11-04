@@ -40,6 +40,7 @@ def export(a, src):
         if not os.path.exists(devp):
             raise SystemExit(f"implview: no device file for {des.part}; run `fpga-design-implview device {des.part}`")
         des.source = src
+        _check_placed(des)
         return load_device(devp), des, src
 
     dcp = find_dcp(src)
@@ -68,7 +69,29 @@ def export(a, src):
     des.source = dcp
     if not routing:
         des.pips = {}
+    _check_placed(des)
     return load_device(devp), des, desp
+
+
+def _check_placed(des):
+    """Warn when most cells have no site: a synthesized checkpoint (like the
+    unsuffixed <top>.dcp Vivado copies into impl_1) draws almost nothing."""
+    unplaced = des.unplaced()
+    total = len(des.cells) + (unplaced or 0)
+    if not unplaced or unplaced <= 0.01 * total:
+        return
+    if len(des.cells) >= total / 2:
+        _log(f"warning: {unplaced:,} of {total:,} cells are not placed")
+        return
+    _log(f"warning: only {len(des.cells):,} of {total:,} cells have a site: "
+         f"the checkpoint is not placed")
+    if des.source.endswith(".dcp"):
+        try:
+            best = find_dcp(os.path.dirname(os.path.abspath(des.source)))
+        except FileNotFoundError:
+            return
+        if os.path.abspath(best) != os.path.abspath(des.source):
+            _log(f"the implemented checkpoint of this run is {best}")
 
 
 def _render_options(a):

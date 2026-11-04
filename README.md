@@ -49,6 +49,11 @@ fpga-design-implview render path/to/impl_1 -H highlight.toml --stats
 
 Without `-o` it writes `<top>.png` and `<top>.pdf` in the current directory.
 
+Give it a run directory or a placed checkpoint (`*_routed.dcp`). The `<top>.dcp` without a
+suffix in `impl_1` is the synthesized netlist Vivado copies there before `opt_design`:
+only the cells your constraints place (IO, GT) have a site, so the picture is nearly empty.
+implview warns when most cells are not placed and names the routed checkpoint of the run.
+
 The first run on a checkpoint opens it in Vivado in batch mode and exports the
 placement (and the routing usage, unless `--no-routing`); the first run on a part
 also exports the device. Both are cached in `~/.cache/implview` (`$IMPLVIEW_CACHE`),
