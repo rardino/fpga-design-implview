@@ -89,6 +89,11 @@ def _design_lines():
     for site, bel, ref, grp, name in DESIGN_CELLS:
         out.append(f"U\t{site}\t{bel}\t{ref}\t{grp}\t{name}")
     out.append("X\tpb_a\tSLICE_X0Y1:SLICE_X1Y3")
+    # ports: clk_n on the N pad (no cell there), clk_p on the site of its buffer,
+    # nc on a pad whose cell is not placed
+    out.append("O\tIOB_X0Y5\tclk_n\tclk_IBUF_inst")
+    out.append("O\tIOB_X0Y4\tclk_p\tclk_IBUF_inst")
+    out.append("O\tIOB_X0Y8\tnc\tu_top/unplaced")
     out.append(f"P\tINT_L_X1Y{H - 1 - 2}\t40")
     out.append(f"P\tINT_R_X3Y{H - 1 - 2}\t10")
     return out

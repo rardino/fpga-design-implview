@@ -68,6 +68,17 @@ def build_placement(dev, design, groups, cell_group, hide_other=False):
         g = n.most_common(1)[0][0]
         site_used[s] = True
         site_group[s] = -1 if hide_other and g == other else g
+    # pads of ports on sites without cells (N side of a differential pair),
+    # colored like the cell the port connects to
+    if design.pads:
+        cell_index = {c.name: i for i, c in enumerate(design.cells)}
+        for site, _port, cell in design.pads:
+            s, i = sidx.get(site, -1), cell_index.get(cell)
+            if s < 0 or s in site_cells or i is None:
+                continue
+            g = cell_group[i]
+            site_used[s] = True
+            site_group[s] = -1 if hide_other and g == other else g
     p = Placement(groups, cell_group, cell_site, site_group, site_used, site_cells,
                   missing=int((cell_site < 0).sum()), hide_other=hide_other)
     p.utilization = utilization(dev, design, p)

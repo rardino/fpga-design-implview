@@ -58,7 +58,9 @@ def test_placement_and_utilization(loaded):
     assert util["LUT"][0] == 4                  # four LUT positions used
     assert util["FF"][0] == 2
     assert util["BRAM"] == (1.5, 2)             # one RAMB36 + one RAMB18
-    assert util["IOB"][0] == 1
+    assert util["IOB"][0] == 2                  # the buffer site and the N pad
+    assert p.site_group[si["IOB_X0Y5"]] == p.site_group[si["IOB_X0Y4"]] >= 0
+    assert p.site_group[si["IOB_X0Y8"]] == -1
 
 
 def test_outputs(loaded, tmp_path):
