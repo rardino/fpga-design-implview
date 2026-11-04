@@ -141,6 +141,15 @@ proc ::implview::export_design {path args} {
         }
     }
 
+    # O site port cell: the site of each connected top-level port, with a cell
+    # on its net for the color. The N side of a differential input holds no
+    # cell (the buffer sits on the P side), but its pad is used.
+    foreach p [get_ports -quiet -filter {PACKAGE_PIN != ""}] {
+        set s [get_sites -quiet -of_objects [get_package_pins -quiet [get_property PACKAGE_PIN $p]]]
+        set c [lindex [get_cells -quiet -of_objects [get_pins -quiet -leaf -of_objects [get_nets -quiet -of_objects $p]]] 0]
+        if {[llength $s] && [llength $c]} { puts $f "O\t[lindex $s 0]\t$p\t$c" }
+    }
+
     # X pblock grid_ranges
     foreach pb [get_pblocks -quiet] {
         puts $f "X\t$pb\t[get_property -quiet GRID_RANGES $pb]"

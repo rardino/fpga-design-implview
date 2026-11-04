@@ -25,6 +25,7 @@ class Design:
     info: dict = field(default_factory=dict)
     cells: list = field(default_factory=list)
     pblocks: list = field(default_factory=list)     # (name, grid ranges)
+    pads: list = field(default_factory=list)        # (site, port, a cell on its net)
     pips: dict = field(default_factory=dict)        # tile name -> used pips
     source: str = ""                                # checkpoint the export came from
 
@@ -61,6 +62,8 @@ def load_design(path):
                 d.pips[r[1]] = int(r[2])
             elif k == "X":
                 d.pblocks.append((r[1], r[2] if len(r) > 2 else ""))
+            elif k == "O":
+                d.pads.append((r[1], r[2], r[3]))
             elif k == "part":
                 d.part = r[1]
             elif k == "top":
