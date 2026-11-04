@@ -47,8 +47,9 @@ def export(a, src):
     part = info.get("part", "")
     routing = not getattr(a, "no_routing", False)
     devp = cache.device_path(part)
-    desp = getattr(a, "output_design", None) or cache.design_path(dcp, routing)
-    if not routing and not os.path.exists(desp) and os.path.exists(cache.design_path(dcp, True)):
+    out = getattr(a, "output_design", None)
+    desp = out or cache.design_path(dcp, routing)
+    if not out and not routing and not os.path.exists(desp) and os.path.exists(cache.design_path(dcp, True)):
         desp = cache.design_path(dcp, True)     # an export with routing has it all
     refresh = getattr(a, "refresh", False)
     if refresh or not os.path.exists(desp) or not os.path.exists(devp):
