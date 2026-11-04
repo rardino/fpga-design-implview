@@ -1,5 +1,7 @@
 # Implemented design viewer for Vivado
 
+This project was made with the help of Claude Opus 5.5.
+
 `fpga-design-implview` draws what a Vivado implementation uses of the device: every site
 of the part (slices, block RAM, DSP, URAM, IO, GT, clocking, hard blocks) on the tile
 grid, lit up when the placed design uses it and colored by design hierarchy. It reads the
