@@ -17,14 +17,14 @@ dependencies = ["numpy", "matplotlib"]
 test = ["pytest"]
 
 [project.scripts]
-fpga-design-implview = "implview.cli:main"
-implview = "implview.cli:main"
+fpga-design-implview = "fpga_design_implview.cli:main"
+implview = "fpga_design_implview.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-implview = ["tcl/*.tcl"]
+fpga_design_implview = ["tcl/*.tcl"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

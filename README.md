@@ -75,7 +75,7 @@ the same Vivado session (source the file by its path, `fpga-design-implview tcl`
 it; do not call the command from inside Vivado, its environment breaks Python):
 
 ```tcl
-source /path/to/fpga-design-implview/src/implview/tcl/implview.tcl
+source /path/to/fpga-design-implview/src/fpga_design_implview/tcl/implview.tcl
 implview::export_all $out/implview -routing     ;# <top>.ivd.gz and <part>.ivdev.gz
 ```
 

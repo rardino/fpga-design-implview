@@ -4,11 +4,11 @@ import zipfile
 
 import pytest
 
-from implview import hier
-from implview.cli import main
-from implview.dcp import dcp_info, find_dcp
-from implview.design import Cell
-from implview.placement import build_placement, group_cells
+from fpga_design_implview import hier
+from fpga_design_implview.cli import main
+from fpga_design_implview.dcp import dcp_info, find_dcp
+from fpga_design_implview.design import Cell
+from fpga_design_implview.placement import build_placement, group_cells
 
 
 def cells(*names):
@@ -62,8 +62,8 @@ def test_placement_and_utilization(loaded):
 
 
 def test_outputs(loaded, tmp_path):
-    from implview.html import write_html
-    from implview.render import write_outputs
+    from fpga_design_implview.html import write_html
+    from fpga_design_implview.render import write_outputs
     dev, des, lay = loaded
     groups, cg, _ = group_cells(des)
     p = build_placement(dev, des, groups, cg)

@@ -110,8 +110,8 @@ def files(tmp_path):
 
 @pytest.fixture
 def loaded(files):
-    from implview.design import load_design
-    from implview.device import load_device
-    from implview.layout import build_layout
+    from fpga_design_implview.design import load_design
+    from fpga_design_implview.device import load_device
+    from fpga_design_implview.layout import build_layout
     dev, des = load_device(files[0]), load_design(files[1])
     return dev, des, build_layout(dev)

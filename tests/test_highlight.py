@@ -3,12 +3,12 @@ import colorsys
 import pytest
 from matplotlib.colors import to_rgb
 
-from implview import hier
-from implview.cli import main
-from implview.design import Cell
-from implview.highlight import Entry, compile_glob, load_config, manual_groups, shades
-from implview.placement import build_placement, group_cells
-from implview.render import THEMES, _legend_rows, group_colors, placement_figure
+from fpga_design_implview import hier
+from fpga_design_implview.cli import main
+from fpga_design_implview.design import Cell
+from fpga_design_implview.highlight import Entry, compile_glob, load_config, manual_groups, shades
+from fpga_design_implview.placement import build_placement, group_cells
+from fpga_design_implview.render import THEMES, _legend_rows, group_colors, placement_figure
 
 PAL, PAL_DARK = THEMES["light"]["series"], THEMES["dark"]["series"]
 
@@ -119,7 +119,7 @@ def test_cli_highlight_file(files, tmp_path, monkeypatch, capsys):
 
 
 def test_no_panel_and_labels(loaded):
-    from implview.render import label_positions, routing_figure, text_on
+    from fpga_design_implview.render import label_positions, routing_figure, text_on
     dev, des, lay = loaded
     groups, cg, _ = group_cells(des)
     p = build_placement(dev, des, groups, cg)
