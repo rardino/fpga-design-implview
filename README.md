@@ -1,8 +1,8 @@
 # Implemented design viewer for Vivado
 
-`implview` draws what a Vivado implementation uses of the device: every site of the
-part (slices, block RAM, DSP, URAM, IO, GT, clocking, hard blocks) on the tile grid,
-lit up when the placed design uses it and colored by design hierarchy. It reads the
+`fpga-design-implview` draws what a Vivado implementation uses of the device: every site
+of the part (slices, block RAM, DSP, URAM, IO, GT, clocking, hard blocks) on the tile
+grid, lit up when the placed design uses it and colored by design hierarchy. It reads the
 part from the checkpoint, so the same command works for any design and device.
 
 Outputs:
@@ -26,16 +26,18 @@ python3 -m venv .venv
 .venv/bin/pip install -e .          # numpy, matplotlib
 ```
 
+The command is `fpga-design-implview`, also installed as `implview` for short.
+
 Vivado is needed to export a design (it is the only thing that reads checkpoints);
 drawing works without it.
 
 ## Usage
 
 ```sh
-implview render path/to/impl_1                  # run dir, project dir or .dcp
-implview render top_routed.dcp -o top.png -o top.pdf -o top.html -O pictures
-implview render top_routed.dcp --theme dark --no-routing
-implview render path/to/impl_1 -H highlight.toml --stats
+fpga-design-implview render path/to/impl_1        # run dir, project dir or .dcp
+fpga-design-implview render top_routed.dcp -o top.png -o top.pdf -o top.html -O pictures
+fpga-design-implview render top_routed.dcp --theme dark --no-routing
+fpga-design-implview render path/to/impl_1 -H highlight.toml --stats
 ```
 
 Without `-o` it writes `<top>.png` and `<top>.pdf` in the current directory.
@@ -46,13 +48,13 @@ also exports the device. Both are cached in `~/.cache/implview` (`$IMPLVIEW_CACH
 devices by part and designs by checkpoint path and time, so later renders take
 seconds. `--refresh` exports again.
 
-| Command                      | What                                                     |
-|------------------------------|----------------------------------------------------------|
-| `implview render INPUT`      | pictures and viewer                                      |
-| `implview export INPUT [-o]` | only the export (design `.ivd.gz`, device in the cache)  |
-| `implview device PART`       | only the device of a part, without a design              |
-| `implview info INPUT`        | part, top, Vivado version, cache status                  |
-| `implview tcl`               | path of `implview.tcl`, for use inside Vivado            |
+| Command                                  | What                                                    |
+|------------------------------------------|---------------------------------------------------------|
+| `fpga-design-implview render INPUT`      | pictures and viewer                                     |
+| `fpga-design-implview export INPUT [-o]` | only the export (design `.ivd.gz`, device in the cache) |
+| `fpga-design-implview device PART`       | only the device of a part, without a design             |
+| `fpga-design-implview info INPUT`        | part, top, Vivado version, cache status                 |
+| `fpga-design-implview tcl`               | path of `implview.tcl`, for use inside Vivado           |
 
 ### Which Vivado
 
@@ -69,16 +71,16 @@ export IMPLVIEW_VIVADO=/tools/Xilinx/2026.1/Vivado/bin/vivado
 ### From a build script
 
 To skip opening the checkpoint again, export at the end of the implementation run, in
-the same Vivado session (source the file by its path, `implview tcl` prints it; do not
-call `implview` from inside Vivado, its environment breaks Python):
+the same Vivado session (source the file by its path, `fpga-design-implview tcl` prints
+it; do not call the command from inside Vivado, its environment breaks Python):
 
 ```tcl
 source /path/to/fpga-design-implview/src/implview/tcl/implview.tcl
 implview::export_all $out/implview -routing     ;# <top>.ivd.gz and <part>.ivdev.gz
 ```
 
-then `implview render $out/implview/<top>.ivd.gz`. The device file is looked up next
-to the design file first, then in the cache.
+then `fpga-design-implview render $out/implview/<top>.ivd.gz`. The device file is looked
+up next to the design file first, then in the cache.
 
 ### Colors
 
@@ -131,7 +133,7 @@ names. The same settings go in the `[options]` of a highlight file: `panel`, `st
 `labels`, `label_size`, `label_style`, `theme`.
 
 ```sh
-implview render path/to/impl_1 -H highlight.toml --no-panel --label-size 16 --theme dark
+fpga-design-implview render path/to/impl_1 -H highlight.toml --no-panel --label-size 16 --theme dark
 ```
 
 ### The viewer

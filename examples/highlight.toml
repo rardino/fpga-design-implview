@@ -2,7 +2,7 @@
 #   u_core/u_fft, u_core/gen_ch[0..3].u_filter, u_core/u_ctrl,
 #   u_io/u_adc_a, u_io/u_adc_b, u_io/u_pcie, u_io/u_ddr
 #
-#   implview render path/to/impl_1 -H examples/highlight.toml
+#   fpga-design-implview render path/to/impl_1 -H examples/highlight.toml
 #
 # path: hierarchy path, * inside one level, ** any depth, brackets are literal.
 # A path matching several instances (a generate loop) gets one shade each.

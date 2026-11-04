@@ -38,7 +38,7 @@ def export(a, src):
         if not os.path.exists(devp):
             devp = cache.device_path(des.part)
         if not os.path.exists(devp):
-            raise SystemExit(f"implview: no device file for {des.part}; run `implview device {des.part}`")
+            raise SystemExit(f"implview: no device file for {des.part}; run `fpga-design-implview device {des.part}`")
         des.source = src
         return load_device(devp), des, src
 
@@ -161,7 +161,7 @@ def cmd_tcl(a):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(
-        prog="implview",
+        prog="fpga-design-implview",
         description="Pictures of Vivado implemented designs: the device resources and "
                     "what the design uses of them.")
     ap.add_argument("--vivado", help="command that runs Vivado (default: $IMPLVIEW_VIVADO, "
