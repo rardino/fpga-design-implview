@@ -22,11 +22,18 @@ from the hierarchy automatically, or from a highlight file.
 ## Install
 
 ```sh
-python3 -m venv .venv
-.venv/bin/pip install -e .          # numpy, matplotlib
+pipx install fpga-design-implview   # or pip install; Python 3.11+, numpy, matplotlib
 ```
 
-The command is `fpga-design-implview`, also installed as `implview` for short.
+or from a clone:
+
+```sh
+python3 -m venv .venv
+.venv/bin/pip install -e .
+```
+
+The command is `fpga-design-implview`, also installed as `implview` for short
+(`python -m fpga_design_implview` works too).
 
 Vivado is needed to export a design (it is the only thing that reads checkpoints);
 drawing works without it.

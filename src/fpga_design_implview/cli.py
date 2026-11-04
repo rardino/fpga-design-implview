@@ -5,7 +5,7 @@ import os
 import sys
 import time
 
-from . import cache, vivado
+from . import __version__, cache, vivado
 from .dcp import dcp_info, find_dcp
 from .design import load_design
 from .device import load_device
@@ -164,6 +164,7 @@ def main(argv=None):
         prog="fpga-design-implview",
         description="Pictures of Vivado implemented designs: the device resources and "
                     "what the design uses of them.")
+    ap.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     ap.add_argument("--vivado", help="command that runs Vivado (default: $IMPLVIEW_VIVADO, "
                                      "vivado on the PATH, or an install matching the checkpoint)")
     sub = ap.add_subparsers(dest="cmd", required=True)
