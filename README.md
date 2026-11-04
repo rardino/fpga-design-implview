@@ -1,5 +1,7 @@
 # Implemented design viewer for Vivado
 
+This project was made with the help of Claude Opus 5.5.
+
 `fpga-design-implview` draws what a Vivado implementation uses of the device: every site
 of the part (slices, block RAM, DSP, URAM, IO, GT, clocking, hard blocks) on the tile
 grid, lit up when the placed design uses it and colored by design hierarchy. It reads the
@@ -22,11 +24,18 @@ from the hierarchy automatically, or from a highlight file.
 ## Install
 
 ```sh
-python3 -m venv .venv
-.venv/bin/pip install -e .          # numpy, matplotlib
+pipx install fpga-design-implview   # or pip install; Python 3.11+, numpy, matplotlib
 ```
 
-The command is `fpga-design-implview`, also installed as `implview` for short.
+or from a clone:
+
+```sh
+python3 -m venv .venv
+.venv/bin/pip install -e .
+```
+
+The command is `fpga-design-implview`, also installed as `implview` for short
+(`python -m fpga_design_implview` works too).
 
 Vivado is needed to export a design (it is the only thing that reads checkpoints);
 drawing works without it.
@@ -41,6 +50,11 @@ fpga-design-implview render path/to/impl_1 -H highlight.toml --stats
 ```
 
 Without `-o` it writes `<top>.png` and `<top>.pdf` in the current directory.
+
+Give it a run directory or a placed checkpoint (`*_routed.dcp`). The `<top>.dcp` without a
+suffix in `impl_1` is the synthesized netlist Vivado copies there before `opt_design`:
+only the cells your constraints place (IO, GT) have a site, so the picture is nearly empty.
+implview warns when most cells are not placed and names the routed checkpoint of the run.
 
 The first run on a checkpoint opens it in Vivado in batch mode and exports the
 placement (and the routing usage, unless `--no-routing`); the first run on a part
@@ -75,7 +89,7 @@ the same Vivado session (source the file by its path, `fpga-design-implview tcl`
 it; do not call the command from inside Vivado, its environment breaks Python):
 
 ```tcl
-source /path/to/fpga-design-implview/src/implview/tcl/implview.tcl
+source /path/to/fpga-design-implview/src/fpga_design_implview/tcl/implview.tcl
 implview::export_all $out/implview -routing     ;# <top>.ivd.gz and <part>.ivdev.gz
 ```
 

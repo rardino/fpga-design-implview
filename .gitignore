@@ -5,5 +5,10 @@ __pycache__/
 .pytest_cache/
 build/
 .Xil/
+# Vivado run files (journal, logs, GUI state)
+vivado*.jou
+vivado*.log
+vivado_pid*.str
+nlviewcommon.logfile
 # private notes (not pushed)
 notes/

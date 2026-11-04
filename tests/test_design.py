@@ -4,11 +4,11 @@ import zipfile
 
 import pytest
 
-from implview import hier
-from implview.cli import main
-from implview.dcp import dcp_info, find_dcp
-from implview.design import Cell
-from implview.placement import build_placement, group_cells
+from fpga_design_implview import hier
+from fpga_design_implview.cli import main
+from fpga_design_implview.dcp import dcp_info, find_dcp
+from fpga_design_implview.design import Cell
+from fpga_design_implview.placement import build_placement, group_cells
 
 
 def cells(*names):
@@ -62,8 +62,8 @@ def test_placement_and_utilization(loaded):
 
 
 def test_outputs(loaded, tmp_path):
-    from implview.html import write_html
-    from implview.render import write_outputs
+    from fpga_design_implview.html import write_html
+    from fpga_design_implview.render import write_outputs
     dev, des, lay = loaded
     groups, cg, _ = group_cells(des)
     p = build_placement(dev, des, groups, cg)
@@ -108,3 +108,25 @@ def test_cli_render_from_export(files, tmp_path, monkeypatch, capsys):
     main(["render", str(des), "-O", str(tmp_path / "out"), "--theme", "dark"])
     written = capsys.readouterr().out.split()
     assert [os.path.basename(w) for w in written] == ["testtop.png", "testtop_routing.png", "testtop.pdf"]
+
+
+def test_unplaced_checkpoint_warns(tmp_path, capsys):
+    from fpga_design_implview.cli import _check_placed
+    from fpga_design_implview.design import Design
+    run = tmp_path / "impl_1"
+    run.mkdir()
+    for name in ("mytop.dcp", "mytop_routed.dcp"):
+        (run / name).write_bytes(b"")
+    # the synthesized netlist Vivado copies into impl_1: only the LOC'd IO has a site
+    d = Design(cells=cells("io0", "io1"), info={"primitives": "1000"}, source=str(run / "mytop.dcp"))
+    _check_placed(d)
+    err = capsys.readouterr().err
+    assert "only 2 of 1,000 cells have a site" in err
+    assert str(run / "mytop_routed.dcp") in err
+    d.info["primitives"] = "3"
+    _check_placed(d)
+    assert "1 of 3 cells are not placed" in capsys.readouterr().err
+    for info in ({"primitives": "2"}, {}):      # all placed; an export without the count
+        d.info = info
+        _check_placed(d)
+        assert capsys.readouterr().err == ""

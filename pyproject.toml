@@ -4,27 +4,49 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fpga-design-implview"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Pictures and an interactive viewer of Vivado implemented designs: device resources and what the design uses of them"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
 authors = [{ name = "Rocco Ardino", email = "roccoardino@gmail.com" }]
-dependencies = ["numpy", "matplotlib"]
+keywords = ["fpga", "vivado", "floorplan", "placement", "routing", "visualization", "eda"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Electronic Design Automation (EDA)",
+    "Topic :: Scientific/Engineering :: Visualization",
+]
+dependencies = ["numpy>=1.24", "matplotlib>=3.7"]
 
 [project.optional-dependencies]
 test = ["pytest"]
 
+[project.urls]
+Homepage = "https://github.com/rardino/fpga-design-implview"
+Issues = "https://github.com/rardino/fpga-design-implview/issues"
+
 [project.scripts]
-fpga-design-implview = "implview.cli:main"
-implview = "implview.cli:main"
+fpga-design-implview = "fpga_design_implview.cli:main"
+implview = "fpga_design_implview.cli:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "fpga_design_implview.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-implview = ["tcl/*.tcl"]
+fpga_design_implview = ["tcl/*.tcl"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

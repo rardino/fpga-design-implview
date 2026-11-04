@@ -5,7 +5,7 @@ import os
 import sys
 import time
 
-from . import cache, vivado
+from . import __version__, cache, vivado
 from .dcp import dcp_info, find_dcp
 from .design import load_design
 from .device import load_device
@@ -40,6 +40,7 @@ def export(a, src):
         if not os.path.exists(devp):
             raise SystemExit(f"implview: no device file for {des.part}; run `fpga-design-implview device {des.part}`")
         des.source = src
+        _check_placed(des)
         return load_device(devp), des, src
 
     dcp = find_dcp(src)
@@ -47,8 +48,9 @@ def export(a, src):
     part = info.get("part", "")
     routing = not getattr(a, "no_routing", False)
     devp = cache.device_path(part)
-    desp = getattr(a, "output_design", None) or cache.design_path(dcp, routing)
-    if not routing and not os.path.exists(desp) and os.path.exists(cache.design_path(dcp, True)):
+    out = getattr(a, "output_design", None)
+    desp = out or cache.design_path(dcp, routing)
+    if not out and not routing and not os.path.exists(desp) and os.path.exists(cache.design_path(dcp, True)):
         desp = cache.design_path(dcp, True)     # an export with routing has it all
     refresh = getattr(a, "refresh", False)
     if refresh or not os.path.exists(desp) or not os.path.exists(devp):
@@ -67,7 +69,29 @@ def export(a, src):
     des.source = dcp
     if not routing:
         des.pips = {}
+    _check_placed(des)
     return load_device(devp), des, desp
+
+
+def _check_placed(des):
+    """Warn when most cells have no site: a synthesized checkpoint (like the
+    unsuffixed <top>.dcp Vivado copies into impl_1) draws almost nothing."""
+    unplaced = des.unplaced()
+    total = len(des.cells) + (unplaced or 0)
+    if not unplaced or unplaced <= 0.01 * total:
+        return
+    if len(des.cells) >= total / 2:
+        _log(f"warning: {unplaced:,} of {total:,} cells are not placed")
+        return
+    _log(f"warning: only {len(des.cells):,} of {total:,} cells have a site: "
+         f"the checkpoint is not placed")
+    if des.source.endswith(".dcp"):
+        try:
+            best = find_dcp(os.path.dirname(os.path.abspath(des.source)))
+        except FileNotFoundError:
+            return
+        if os.path.abspath(best) != os.path.abspath(des.source):
+            _log(f"the implemented checkpoint of this run is {best}")
 
 
 def _render_options(a):
@@ -164,6 +188,7 @@ def main(argv=None):
         prog="fpga-design-implview",
         description="Pictures of Vivado implemented designs: the device resources and "
                     "what the design uses of them.")
+    ap.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     ap.add_argument("--vivado", help="command that runs Vivado (default: $IMPLVIEW_VIVADO, "
                                      "vivado on the PATH, or an install matching the checkpoint)")
     sub = ap.add_subparsers(dest="cmd", required=True)
