@@ -176,7 +176,8 @@ def pblock_rects(dev, lay, pblocks):
 def label_positions(lay, place, names, unit, fs=9.0, pad=0.0):
     """Where to name each group: the densest part of its sites, moved so the
     labels do not overlap (large groups pick first; a label that finds no free
-    spot goes on its densest part anyway). unit is the size of one text point
+    spot goes on its densest part anyway, unless its group is tiny, under 1% of
+    the colored sites). unit is the size of one text point
     in layout units, pad the padding around the text in font sizes.
     Returns [(group index, x, y)]."""
     r = lay.site_rect
@@ -199,10 +200,9 @@ def label_positions(lay, place, names, unit, fs=9.0, pad=0.0):
         ht = (1.4 + 2 * pad) * fs * unit
         steps = [(0, 0), (0, -ht), (0, ht), (-w / 2, 0), (w / 2, 0), (0, -2 * ht), (0, 2 * ht)]
         first = None
-        for k in np.argsort(h, axis=None)[::-1][:40]:
+        spots = [k for k in np.argsort(h, axis=None)[::-1][:40] if h.flat[k] >= 1]
+        for k in spots:
             i, j = np.unravel_index(k, h.shape)
-            if h[i, j] < 1:
-                break
             sel = m & (cx >= xe[i]) & (cx <= xe[i + 1]) & (cy >= ye[j]) & (cy <= ye[j + 1])
             bx, by = float(np.median(cx[sel])), float(np.median(cy[sel]))
             for dx, dy in steps:
@@ -217,6 +217,8 @@ def label_positions(lay, place, names, unit, fs=9.0, pad=0.0):
                 continue
             break
         else:
+            if m.sum() < 0.01 * len(used):
+                continue
             x, y = first
             box = (x - w / 2, y - ht / 2, x + w / 2, y + ht / 2)
         placed.append(box)
