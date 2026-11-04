@@ -1,0 +1,30 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13", "3.14"]
+        deps: [latest]
+        include:
+          - python: "3.11"
+            deps: oldest            # the minimum versions in pyproject.toml
+    name: python ${{ matrix.python }} (${{ matrix.deps }})
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - if: matrix.deps == 'latest'
+        run: pip install -e ".[test]"
+      - if: matrix.deps == 'oldest'
+        run: pip install -e ".[test]" "numpy==1.24.*" "matplotlib==3.7.*"
+      - run: pytest -q
