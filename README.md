@@ -1,4 +1,4 @@
-# Implemented design viewer for Vivado
+# Vivado implemented design renderer and viewer
 
 This project was made with the help of Claude Opus 5.5.
 
