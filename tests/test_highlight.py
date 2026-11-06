@@ -1,4 +1,5 @@
 import colorsys
+from pathlib import Path
 
 import pytest
 from matplotlib.colors import to_rgb
@@ -72,6 +73,15 @@ def test_load_config(tmp_path):
         p.write_text(bad)
         with pytest.raises(ValueError):
             load_config(p)
+
+
+EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
+
+
+@pytest.mark.parametrize("path", sorted(EXAMPLES.rglob("*.toml")),
+                         ids=lambda p: str(p.relative_to(EXAMPLES)))
+def test_example_highlight_files(path):
+    assert load_config(path).entries
 
 
 def test_hide_other_and_stats(loaded):

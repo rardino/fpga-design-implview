@@ -1,0 +1,60 @@
+# PYNQ-Z2 (xc7z020): the infrastructure and an MLP accelerator.
+#
+#   fpga-design-implview render pynqz2-mlp.ivd.gz -H examples/pynq-z2/mlp.toml
+#
+# The accelerator's AXI registers and stream FIFOs, the GP0 split and ID
+# slot and the PS resets are left in "(other)".
+
+# The infrastructure, the same colors in the three examples: warm for the
+# infrastructure, blue and violet for the model.
+
+[[highlight]]
+path = "u_ps/u_system/ps7"
+color = "#eb6834"
+label = "PS7"
+
+[[highlight]]
+path = "u_ps/u_system/sc_hp"
+color = "#eda100"
+label = "SmartConnect HP0"
+
+[[highlight]]
+path = "u_ps/u_system/sc_ctrl"
+color = "#e87ba4"
+label = "SmartConnect GP0"
+
+[[highlight]]
+path = "u_core/u_dma"
+color = "#1baf7a"
+label = "AXI DMA"
+
+[[highlight]]
+path = "u_core/u_ddr_rw"
+color = "#008300"
+label = "ddr_rw"
+
+[[highlight]]
+path = "u_core/u_test"
+color = "#e34948"
+label = "axis_test"
+
+# The MLP. mlp_core holds the parameter memories and the network (u_mlp).
+
+[[highlight]]
+path = "u_core/g_mlp.u_mlp/u_core"
+color = "#a77be0"
+label = "MLP parameters"
+
+[[highlight]]
+path = "u_core/g_mlp.u_mlp/u_core/u_mlp"
+color = "#174a8b"
+color_dark = "#4f8fe0"
+label = "MLP: argmax, glue"
+
+[[highlight]]
+path = "u_core/g_mlp.u_mlp/u_core/u_mlp/u_l*"   # one shade per layer
+color = ["#2a78d6", "#7fb4ee"]
+label = "layer"
+
+[options]
+others = "grey"

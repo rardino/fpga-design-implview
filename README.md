@@ -3,187 +3,106 @@
 This project was made with the help of Claude Opus 5.5.
 
 `fpga-design-implview` draws what a Vivado implementation uses of the device: every site
-of the part (slices, block RAM, DSP, URAM, IO, GT, clocking, hard blocks) on the tile
-grid, lit up when the placed design uses it and colored by design hierarchy. It reads the
-part from the checkpoint, so the same command works for any design and device.
+of the part (slices, BRAM, DSP, URAM, IO, GT, clocking, hard blocks), lit up when the
+design uses it and colored by hierarchy, with the part, WNS/WHS and the legend. The
+part comes from the checkpoint: any design, any device.
 
-Outputs:
+## Examples
 
-| File      | What                                                                 |
-|-----------|----------------------------------------------------------------------|
-| `.png`    | placement picture, plus `_routing.png` with the interconnect usage    |
-| `.pdf`    | both pages, vector (zoom in to see single slices)                    |
-| `.svg`    | like the PNGs, vector                                                |
-| `.html`   | interactive viewer in one self-contained file (pan, zoom, search)    |
+PYNQ-Z2 (xc7z020):
 
-Each picture has the part, Vivado version, WNS/WHS and the hierarchy legend, and with
-`--stats` a utilization table (LUT, FF, SLICE, BRAM, URAM, DSP, IOB, GT, BUFG, MMCM/PLL)
-and the cells per group. Clock regions, SLRs and pblocks are outlined. Colors come
-from the hierarchy automatically, or from a highlight file.
+![PYNQ-Z2 design](https://github.com/rardino/fpga-design-implview/raw/main/docs/pynq-z2/gpt.png)
+
+![PYNQ-Z2 design](https://github.com/rardino/fpga-design-implview/raw/main/docs/pynq-z2/mlp.png)
 
 ## Install
 
 ```sh
-pipx install fpga-design-implview   # or pip install; Python 3.11+, numpy, matplotlib
+pipx install fpga-design-implview   # or pip; Python 3.11+
 ```
 
-or from a clone:
-
-```sh
-python3 -m venv .venv
-.venv/bin/pip install -e .
-```
-
-The command is `fpga-design-implview`, also installed as `implview` for short
-(`python -m fpga_design_implview` works too).
-
-Vivado is needed to export a design (it is the only thing that reads checkpoints);
-drawing works without it.
+The command is `fpga-design-implview`, or `implview` for short. Vivado is needed to read
+the checkpoint (with a license for its device); drawing works without it.
 
 ## Usage
 
 ```sh
-fpga-design-implview render path/to/impl_1        # run dir, project dir or .dcp
-fpga-design-implview render top_routed.dcp -o top.png -o top.pdf -o top.html -O pictures
-fpga-design-implview render top_routed.dcp --theme dark --no-routing
-fpga-design-implview render path/to/impl_1 -H highlight.toml --stats
+fpga-design-implview render path/to/impl_1               # <top>.png, <top>.pdf
+fpga-design-implview render top_routed.dcp -o top.html   # interactive viewer
+fpga-design-implview render path/to/impl_1 -H highlight.toml --stats --theme dark
 ```
 
-Without `-o` it writes `<top>.png` and `<top>.pdf` in the current directory.
+The input is a run directory, a project directory or a routed checkpoint. The output
+format follows the extension: `.png` (placement, plus `_routing.png`), `.pdf`, `.svg`,
+`.html`.
 
-Give it a run directory or a placed checkpoint (`*_routed.dcp`). The `<top>.dcp` without a
-suffix in `impl_1` is the synthesized netlist Vivado copies there before `opt_design`:
-only the cells your constraints place (IO, GT) have a site, so the picture is nearly empty.
-implview warns when most cells are not placed and names the routed checkpoint of the run.
+The first run opens the checkpoint in Vivado (batch mode) and caches the export in
+`~/.cache/implview`, so later renders take seconds. Vivado is `$IMPLVIEW_VIVADO` (or
+`--vivado CMD` before the command), else `vivado` on the PATH, else the install under
+`~/opt/xilinx`, `~/Xilinx`, `/opt/Xilinx` or `/tools/Xilinx` matching the checkpoint's
+version.
 
-The first run on a checkpoint opens it in Vivado in batch mode and exports the
-placement (and the routing usage, unless `--no-routing`); the first run on a part
-also exports the device. Both are cached in `~/.cache/implview` (`$IMPLVIEW_CACHE`),
-devices by part and designs by checkpoint path and time, so later renders take
-seconds. `--refresh` exports again.
+| Option                     | What                                              |
+|----------------------------|---------------------------------------------------|
+| `-o FILE`, `-O DIR`        | output file (repeatable), output directory        |
+| `-H FILE`                  | highlight file: what to color and how             |
+| `-g PATH`                  | color a hierarchy path (repeatable)               |
+| `--depth N`                | automatic groups cut at depth N                   |
+| `--stats`                  | utilization table and cells per group             |
+| `--theme dark`             | dark theme                                        |
+| `--no-routing`             | skip the routing page (faster first export)       |
+| `--no-panel`, `--no-labels` | device only, no names on it                    |
+| `--save-highlight FILE`    | write the groups used as a highlight file         |
+| `--refresh`                | export again, ignore the cache                    |
 
-| Command                                  | What                                                    |
-|------------------------------------------|---------------------------------------------------------|
-| `fpga-design-implview render INPUT`      | pictures and viewer                                     |
-| `fpga-design-implview export INPUT [-o]` | only the export (design `.ivd.gz`, device in the cache) |
-| `fpga-design-implview device PART`       | only the device of a part, without a design             |
-| `fpga-design-implview info INPUT`        | part, top, Vivado version, cache status                 |
-| `fpga-design-implview tcl`               | path of `implview.tcl`, for use inside Vivado           |
+Other commands: `export` (only the export), `device PART` (only the device), `info`
+(part, top, cache status), `tcl` (path of `implview.tcl`).
 
-### Which Vivado
+## Colors
 
-`--vivado` or `$IMPLVIEW_VIVADO` give the command (a path, or a command with its
-arguments); otherwise `vivado` on the PATH, or the install under `~/opt/xilinx`,
-`~/Xilinx`, `/opt/Xilinx`, `/tools/Xilinx` whose version wrote the checkpoint (older
-versions cannot open newer checkpoints). Opening a checkpoint needs a license for its
-device.
-
-```sh
-export IMPLVIEW_VIVADO=/tools/Xilinx/2026.1/Vivado/bin/vivado
-```
-
-### From a build script
-
-To skip opening the checkpoint again, export at the end of the implementation run, in
-the same Vivado session (source the file by its path, `fpga-design-implview tcl` prints
-it; do not call the command from inside Vivado, its environment breaks Python):
-
-```tcl
-source /path/to/fpga-design-implview/src/fpga_design_implview/tcl/implview.tcl
-implview::export_all $out/implview -routing     ;# <top>.ivd.gz and <part>.ivdev.gz
-```
-
-then `fpga-design-implview render $out/implview/<top>.ivd.gz`. The device file is looked
-up next to the design file first, then in the cache.
-
-### Colors
-
-**Automatic** (default): the hierarchy is split from the top, always splitting the
-largest group (wrappers with one child are walked through), until the 8 colors are
-used; cells of small modules go to "(other)". `--depth N` cuts the hierarchy at depth N
-instead.
-
-**Manual**: a highlight file says what to color and how (`-H file.toml`):
+By default the hierarchy is split into up to 8 groups. A highlight file (`-H`) chooses:
 
 ```toml
 [[highlight]]
-path = "u_core/u_fft"                # * inside one level, ** any depth, [] literal
-color = "#2a78d6"                    # hex or color name; omit for the next palette color
-label = "FFT"                        # legend name (default: the path)
+path = "u_core/u_fft"                # * inside one level, ** any depth
+color = "#2a78d6"
+label = "FFT"
 
 [[highlight]]
 path = "u_core/gen_ch[*].u_filter"   # a generate loop: one shade per instance
-color = ["#8fe0bb", "#0f6e4b"]       # shades from the first to the last color
-label = "filter"                     # legend: "filter 0", "filter 1"
+color = ["#8fe0bb", "#0f6e4b"]
+label = "filter"
 
 [options]
-others = "grey"                      # cells not listed: "grey" or "hide"
-theme = "dark"                       # also stats, labels; the command line wins
+others = "grey"                      # or "hide"; also theme, stats, labels, panel
 ```
 
-A path matching several instances gets one shade each: between the colors of a list,
-or lighter to darker around a single color (`gradient = false` for one color for all).
-When paths overlap, the most specific one holds the cell. A path that matches no
-instance is tried on cell names (`u_ctrl/rx_*`). `color_dark` sets a color for the
-dark theme. Loops with more than 6 instances take one legend row.
-[examples/highlight.toml](examples/highlight.toml) is a full example.
+The most specific path holds a cell. More in
+[examples](https://github.com/rardino/fpga-design-implview/tree/main/examples).
 
-`--save-highlight FILE` writes the groups of a render (the automatic ones too) as a
-highlight file, a starting point to edit. `-g PATH` (repeatable) colors paths with the
-palette without a file.
+## Viewer
 
-A site takes the color of most of its cells, listed groups before "(other)".
+Scroll to zoom, drag to pan, `F` to fit. Hover a site for its cells, click to pin them,
+click a cell to highlight its module. Search cell names (`*`, `?`), toggle groups and
+layers (routing, clock regions, pblocks), switch light/dark, save the view as PNG.
 
-### Panel and labels
+## From a build script
 
-The panel on the right has the design, part, Vivado version, WNS/WHS and the legend.
-`--stats` adds the utilization table and the cells per group (the HTML viewer always
-shows them); `--no-panel` leaves the device alone in the picture.
+Export at the end of the implementation run, in the same Vivado session, to skip
+opening the checkpoint again (`fpga-design-implview tcl` prints the script's path):
 
-Each group is named on the device where most of its sites are, as a badge in its color
-(`--label-style text` for plain names), large groups first, without overlaps. The size
-is `--label-size PT` (default 10); `--no-labels` removes them with the clock region
-names. The same settings go in the `[options]` of a highlight file: `panel`, `stats`,
-`labels`, `label_size`, `label_style`, `theme`.
-
-```sh
-fpga-design-implview render path/to/impl_1 -H highlight.toml --no-panel --label-size 16 --theme dark
+```tcl
+source /path/to/implview.tcl
+implview::export_all $out/implview -routing     ;# <top>.ivd.gz and <part>.ivdev.gz
 ```
 
-### The viewer
-
-Scroll to zoom, drag to pan, `F` to fit. Hover a site for its cells (name, primitive,
-BEL), click it to pin the list; click a cell to highlight its whole module. The search
-box matches cell names (`*` and `?` as wildcards) and dims everything else. Groups and
-layers (unused sites, routing usage, clock regions, pblocks, labels) can be toggled,
-light/dark switched, the current view saved as PNG. The URL hash sets the start view:
-`viewer.html#q=u_core/u_fft/*&theme=dark&layer=routing&site=SLICE_X10Y20`.
-
-## How it works
-
-`tcl/implview.tcl` exports two gzip'ed tab-separated files:
-
-- device (`*.ivdev.gz`): every tile (type, grid position), its sites (type, clock
-  region), the BELs of each site type, clock regions, SLRs, package pins;
-- design (`*.ivd.gz`): every placed primitive (site, BEL, primitive, hierarchical
-  name), pblocks, WNS/WHS, and the used PIPs per tile (constant nets left out).
-
-The picture is laid out on Vivado's tile grid (`layout.py`). The grid has one point per
-tile, so grid columns get a width from what they hold (site columns full, interconnect
-narrow, the rest thin) and rows without interconnect (clock rows) are thin. Tiles taller
-than one grid point sit at the bottom of a run of NULL tiles: each claims the NULL
-points above it up to its clock region edge. Tiles next to a larger NULL area (Zynq PS,
-GT quads, IO banks) grow into it; siteless tiles in front of a large one (the HBM
-stacks) are drawn as labeled boxes. Inside a tile, sites are grouped by name prefix and
-placed by the X/Y of their names; a RAMB36 is drawn over its two RAMB18 when used.
-
-The geometry is the tile grid, not the die to scale.
+then `fpga-design-implview render $out/implview/<top>.ivd.gz`.
 
 ## Status
 
-Tried on a Zynq-7000 (xc7z020) and a Virtex UltraScale+ HBM part (xcvu37p, three SLRs).
-UltraScale, Zynq UltraScale+ and Versal parts are not tried yet. Nets are not drawn,
-only how much each interconnect tile is used.
+Tried on Zynq-7000 (xc7z020) and Virtex UltraScale+ HBM (xcvu37p, three SLRs).
+UltraScale, Zynq UltraScale+ and Versal are not tried yet. Nets are not drawn, only how
+much each interconnect tile is used. The picture follows Vivado's tile grid, not the die
+to scale.
 
-Tests: `.venv/bin/pip install -e .[test] && .venv/bin/pytest` (no Vivado needed, they
-use a small synthetic device).
+Tests, from a clone: `pip install -e .[test] && pytest` (no Vivado needed).
