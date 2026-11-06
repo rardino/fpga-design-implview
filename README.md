@@ -21,6 +21,14 @@ Each picture has the part, Vivado version, WNS/WHS and the hierarchy legend, and
 and the cells per group. Clock regions, SLRs and pblocks are outlined. Colors come
 from the hierarchy automatically, or from a highlight file.
 
+## Examples
+
+PYNQ-Z2 (xc7z020):
+
+![PYNQ-Z2 design](https://github.com/rardino/fpga-design-implview/raw/main/docs/pynq-z2/gpt.png)
+
+![PYNQ-Z2 design](https://github.com/rardino/fpga-design-implview/raw/main/docs/pynq-z2/mlp.png)
+
 ## Install
 
 ```sh
@@ -126,7 +134,8 @@ or lighter to darker around a single color (`gradient = false` for one color for
 When paths overlap, the most specific one holds the cell. A path that matches no
 instance is tried on cell names (`u_ctrl/rx_*`). `color_dark` sets a color for the
 dark theme. Loops with more than 6 instances take one legend row.
-[examples/highlight.toml](examples/highlight.toml) is a full example.
+[examples/highlight.toml](https://github.com/rardino/fpga-design-implview/blob/main/examples/highlight.toml)
+is a full example.
 
 `--save-highlight FILE` writes the groups of a render (the automatic ones too) as a
 highlight file, a starting point to edit. `-g PATH` (repeatable) colors paths with the
@@ -181,7 +190,8 @@ The geometry is the tile grid, not the die to scale.
 
 ## Status
 
-Tried on a Zynq-7000 (xc7z020) and a Virtex UltraScale+ HBM part (xcvu37p, three SLRs).
+Tried on a Zynq-7000 (xc7z020, the examples above) and a Virtex UltraScale+ HBM part
+(xcvu37p, three SLRs).
 UltraScale, Zynq UltraScale+ and Versal parts are not tried yet. Nets are not drawn,
 only how much each interconnect tile is used.
 
