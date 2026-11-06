@@ -9,11 +9,19 @@ part comes from the checkpoint: any design, any device.
 
 ## Examples
 
-PYNQ-Z2 (xc7z020):
+PYNQ-Z2 (xc7z020), placement and routing usage:
 
-![PYNQ-Z2 design](https://github.com/rardino/fpga-design-implview/raw/main/docs/pynq-z2/gpt.png)
+<p>
+<img src="https://github.com/rardino/fpga-design-implview/raw/main/docs/pynq-z2/gpt.png" width="49%" alt="PYNQ-Z2 design, placement">
+<img src="https://github.com/rardino/fpga-design-implview/raw/main/docs/pynq-z2/gpt_routing.png" width="49%" alt="PYNQ-Z2 design, routing usage">
+</p>
 
-![PYNQ-Z2 design](https://github.com/rardino/fpga-design-implview/raw/main/docs/pynq-z2/mlp.png)
+<p>
+<img src="https://github.com/rardino/fpga-design-implview/raw/main/docs/pynq-z2/mlp.png" width="49%" alt="PYNQ-Z2 design, placement">
+<img src="https://github.com/rardino/fpga-design-implview/raw/main/docs/pynq-z2/mlp_routing.png" width="49%" alt="PYNQ-Z2 design, routing usage">
+</p>
+
+Note: the text on the right is optional, `--no-panel` leaves only the device.
 
 ## Install
 
