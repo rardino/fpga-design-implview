@@ -1,0 +1,44 @@
+# PYNQ-Z2 (xc7z020), the infrastructure alone: the PS7 with an AXI
+# SmartConnect on GP0 and on HP0, and in the PL the GP0 register slots,
+# ddr_rw, the AXI DMA and axis_test.
+#
+#   fpga-design-implview render pynqz2-platform.ivd.gz -H examples/pynq-z2/platform.toml
+#
+# The GP0 split and ID slot, the PS resets and the LED counters are left in
+# "(other)".
+
+# The infrastructure, the same colors in the three examples: warm for the
+# infrastructure, blue and violet for the model.
+
+[[highlight]]
+path = "u_ps/u_system/ps7"
+color = "#eb6834"
+label = "PS7"
+
+[[highlight]]
+path = "u_ps/u_system/sc_hp"
+color = "#eda100"
+label = "SmartConnect HP0"
+
+[[highlight]]
+path = "u_ps/u_system/sc_ctrl"
+color = "#e87ba4"
+label = "SmartConnect GP0"
+
+[[highlight]]
+path = "u_core/u_dma"
+color = "#1baf7a"
+label = "AXI DMA"
+
+[[highlight]]
+path = "u_core/u_ddr_rw"
+color = "#008300"
+label = "ddr_rw"
+
+[[highlight]]
+path = "u_core/u_test"
+color = "#e34948"
+label = "axis_test"
+
+[options]
+others = "grey"

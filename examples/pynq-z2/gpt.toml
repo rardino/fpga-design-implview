@@ -1,0 +1,72 @@
+# PYNQ-Z2 (xc7z020): the infrastructure and a GPT accelerator.
+#
+#   fpga-design-implview render pynqz2-gpt.ivd.gz -H examples/pynq-z2/gpt.toml
+#
+# The accelerator's AXI registers and stream FIFOs, the GP0 split and ID
+# slot and the PS resets are left in "(other)".
+
+# The infrastructure, the same colors in the three examples: warm for the
+# infrastructure, blue and violet for the model.
+
+[[highlight]]
+path = "u_ps/u_system/ps7"
+color = "#eb6834"
+label = "PS7"
+
+[[highlight]]
+path = "u_ps/u_system/sc_hp"
+color = "#eda100"
+label = "SmartConnect HP0"
+
+[[highlight]]
+path = "u_ps/u_system/sc_ctrl"
+color = "#e87ba4"
+label = "SmartConnect GP0"
+
+[[highlight]]
+path = "u_core/u_dma"
+color = "#1baf7a"
+label = "AXI DMA"
+
+[[highlight]]
+path = "u_core/u_ddr_rw"
+color = "#008300"
+label = "ddr_rw"
+
+[[highlight]]
+path = "u_core/u_test"
+color = "#e34948"
+label = "axis_test"
+
+# The GPT. gpt_core holds the parameter memories and the model (u_gpt); the
+# more specific paths below take their cells out of it.
+
+[[highlight]]
+path = "u_core/g_gpt.u_gpt/u_core"
+color = "#a77be0"
+label = "GPT parameters"
+
+[[highlight]]
+path = "u_core/g_gpt.u_gpt/u_core/u_gpt"
+color = "#174a8b"
+color_dark = "#4f8fe0"
+label = "GPT: embedding, head, glue"
+
+[[highlight]]
+path = "u_core/g_gpt.u_gpt/u_core/u_gpt/u_block/u_attention"
+color = "#2a78d6"
+label = "attention"
+
+[[highlight]]
+path = "u_core/g_gpt.u_gpt/u_core/u_gpt/u_block/u_engine"
+color = "#6250d6"
+label = "linear engine"
+
+[[highlight]]
+path = "u_core/g_gpt.u_gpt/u_core/u_gpt/**/u_ln*"   # u_ln1, u_ln2, u_lnf
+color = "#7fb4ee"
+gradient = false
+label = "layer norms"
+
+[options]
+others = "grey"
