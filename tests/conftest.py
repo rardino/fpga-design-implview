@@ -94,6 +94,21 @@ def _design_lines():
     out.append("O\tIOB_X0Y5\tclk_n\tclk_IBUF_inst")
     out.append("O\tIOB_X0Y4\tclk_p\tclk_IBUF_inst")
     out.append("O\tIOB_X0Y8\tnc\tu_top/unplaced")
+    # timing: a setup path from a port through two slices into the RAM (the
+    # report escapes newlines and tabs), a hold path inside one slice
+    out.append("T\t0\tsetup\t-0.250\t10.000\t9.800\t2.100\t7.700\t2\t-0.050\tclk\tclk\tclk"
+               "\tdin\tu_top/u_b/ram/DIA[0]")
+    out.append("N\t0\tdin\tIOB_X0Y4")
+    for pin, site in (("u_top/u_a/ff0/C", "SLICE_X0Y1"), ("u_top/u_a/ff0/Q", "SLICE_X0Y1"),
+                      ("u_top/u_a/lut0/I2", "SLICE_X0Y1"), ("u_top/u_a/lut0/O", "SLICE_X0Y1"),
+                      ("u_top/u_c/lut0/I0", "SLICE_X6Y1"), ("u_top/u_c/lut0/O", "SLICE_X6Y1"),
+                      ("u_top/u_b/ram/DIA[0]", "RAMB36_X0Y0")):
+        out.append(f"N\t0\t{pin}\t{site}")
+    out.append("Y\t0\tSlack (VIOLATED) :  -0.250ns\\n\\tLocation  SLICE_X6Y1  back\\\\slash")
+    out.append("T\t1\thold\t0.040\t0.000\t0.200\t0.100\t0.100\t0\t0.010\tclk\tclk\tclk"
+               "\tu_top/u_a/ff0/C\tu_top/u_a/sub/lut1/I0")
+    out.append("N\t1\tu_top/u_a/ff0/Q\tSLICE_X0Y1")
+    out.append("N\t1\tu_top/u_a/sub/lut1/I0\tSLICE_X1Y1")
     out.append(f"P\tINT_L_X1Y{H - 1 - 2}\t40")
     out.append(f"P\tINT_R_X3Y{H - 1 - 2}\t10")
     return out

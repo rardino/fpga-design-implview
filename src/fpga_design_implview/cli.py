@@ -11,6 +11,9 @@ from .design import load_design
 from .device import load_device
 
 
+DEFAULT_PATHS = 50
+
+
 def _log(msg):
     sys.stderr.write(f"implview: {msg}\n")
 
@@ -47,11 +50,13 @@ def export(a, src):
     info = dcp_info(dcp)
     part = info.get("part", "")
     routing = not getattr(a, "no_routing", False)
+    npaths = max(getattr(a, "paths", DEFAULT_PATHS), 0)
     devp = cache.device_path(part)
     out = getattr(a, "output_design", None)
-    desp = out or cache.design_path(dcp, routing)
-    if not out and not routing and not os.path.exists(desp) and os.path.exists(cache.design_path(dcp, True)):
-        desp = cache.design_path(dcp, True)     # an export with routing has it all
+    desp = out or cache.design_path(dcp, routing, f"paths={npaths}")
+    full = cache.design_path(dcp, True, f"paths={npaths}")
+    if not out and not routing and not os.path.exists(desp) and os.path.exists(full):
+        desp = full                             # an export with routing has it all
     refresh = getattr(a, "refresh", False)
     if refresh or not os.path.exists(desp) or not os.path.exists(devp):
         args = ["design", os.path.abspath(dcp), desp]
@@ -61,6 +66,7 @@ def export(a, src):
             outputs.append(devp)
         if routing:
             args.append("-routing")
+        args += ["-paths", str(npaths)]
         _log(f"{dcp}: {part}, top {info.get('top', '?')}, Vivado {info.get('vivado', '?')}: exporting")
         t0 = time.time()
         _atomic_run(outputs, args, a, info.get("vivado", ""))
@@ -197,6 +203,9 @@ def main(argv=None):
         p.add_argument("input", help="routed checkpoint, run directory (impl_1), project "
                                      "directory, or an exported .ivd.gz")
         p.add_argument("--no-routing", action="store_true", help="skip the routing usage export")
+        p.add_argument("--paths", type=int, default=DEFAULT_PATHS, metavar="N",
+                       help=f"export the N worst setup and N worst hold paths (default "
+                            f"{DEFAULT_PATHS}, 0 for none)")
         p.add_argument("--refresh", action="store_true", help="export again, ignore the cache")
 
     p = sub.add_parser("render", help="write PNG/PDF/SVG/HTML pictures of a design")

@@ -2,9 +2,11 @@
 # design open (a routed checkpoint, or the implemented design at the end of a
 # build) and call:
 #
-#   implview::export_all <dir> ?-routing?    design and device into <dir>
-#   implview::export_design design.ivd.gz ?-routing?
+#   implview::export_all <dir> ?-routing? ?-paths N?    design and device into <dir>
+#   implview::export_design design.ivd.gz ?-routing? ?-paths N?
 #   implview::export_device device.ivdev.gz
+#
+# -paths N: the N worst setup and N worst hold paths (default 50, 0 for none).
 #
 # then `implview render <dir>/<top>.ivd.gz` (the device file is looked up
 # next to the design file, then in the implview cache).
@@ -106,6 +108,54 @@ proc ::implview::_slack {args} {
     return [get_property -quiet SLACK $p]
 }
 
+proc ::implview::_esc {s} {
+    return [string map [list "\\" "\\\\" "\t" "\\t" "\n" "\\n" "\r" ""] $s]
+}
+
+proc ::implview::_port_site {port} {
+    set s [get_sites -quiet -of_objects [get_package_pins -quiet [get_property -quiet PACKAGE_PIN $port]]]
+    return [lindex $s 0]
+}
+
+# The port behind a startpoint/endpoint name, empty for a pin.
+proc ::implview::_as_port {name} {
+    if {$name eq "" || [string first / $name] >= 0} { return {} }
+    if {[catch {get_ports -quiet $name} p]} { return {} }
+    return $p
+}
+
+# T index check slack requirement datapath logic net levels skew start_clock
+#   end_clock group startpoint endpoint
+# N index pin site      the pins along the path, in order (ports by name)
+# Y index report        report_timing of the path, \ tab newline escaped
+proc ::implview::_timing_paths {f n} {
+    set idx 0
+    foreach check {setup hold} {
+        foreach p [get_timing_paths -quiet -$check -max_paths $n -nworst 1] {
+            set rec [list T $idx $check]
+            foreach k {SLACK REQUIREMENT DATAPATH_DELAY DATAPATH_LOGIC_DELAY DATAPATH_NET_DELAY
+                       LOGIC_LEVELS SKEW STARTPOINT_CLOCK ENDPOINT_CLOCK GROUP
+                       STARTPOINT_PIN ENDPOINT_PIN} {
+                lappend rec [get_property -quiet $k $p]
+            }
+            puts $f [join $rec \t]
+            set sp [_as_port [get_property -quiet STARTPOINT_PIN $p]]
+            if {[llength $sp]} { puts $f "N\t$idx\t$sp\t[_port_site $sp]" }
+            foreach pin [get_pins -quiet -of_objects $p] {
+                set c [get_cells -quiet -of_objects $pin]
+                puts $f "N\t$idx\t$pin\t[get_property -quiet LOC $c]"
+            }
+            set ep [_as_port [get_property -quiet ENDPOINT_PIN $p]]
+            if {[llength $ep]} { puts $f "N\t$idx\t$ep\t[_port_site $ep]" }
+            if {![catch {report_timing -of_objects $p -return_string} txt]} {
+                puts $f "Y\t$idx\t[_esc [string trim $txt]]"
+            }
+            incr idx
+        }
+    }
+    return $idx
+}
+
 proc ::implview::export_all {dir args} {
     file mkdir $dir
     set dev [file join $dir "[get_property PART [current_design]].ivdev.gz"]
@@ -116,6 +166,9 @@ proc ::implview::export_all {dir args} {
 proc ::implview::export_design {path args} {
     variable format_version
     set routing [expr {[lsearch -exact $args -routing] >= 0}]
+    set npaths 50
+    set i [lsearch -exact $args -paths]
+    if {$i >= 0} { set npaths [lindex $args [expr {$i + 1}]] }
 
     set t0 [clock milliseconds]
     set f [_open $path]
@@ -153,6 +206,15 @@ proc ::implview::export_design {path args} {
     # X pblock grid_ranges
     foreach pb [get_pblocks -quiet] {
         puts $f "X\t$pb\t[get_property -quiet GRID_RANGES $pb]"
+    }
+
+    # the worst setup and hold paths: a failure here leaves the rest of the export
+    if {$npaths > 0} {
+        if {[catch {_timing_paths $f $npaths} n]} {
+            puts "implview: warning: timing paths not exported: $n"
+        } else {
+            puts "implview: $n timing paths"
+        }
     }
 
     # P tile used_pips (routing usage per tile)

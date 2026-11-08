@@ -59,6 +59,7 @@ version.
 | `--stats`                  | utilization table and cells per group             |
 | `--theme dark`             | dark theme                                        |
 | `--no-routing`             | skip the routing page (faster first export)       |
+| `--paths N`                | N worst setup and hold paths (default 50, 0 none) |
 | `--no-panel`, `--no-labels` | device only, no names on it                    |
 | `--save-highlight FILE`    | write the groups used as a highlight file         |
 | `--refresh`                | export again, ignore the cache                    |
@@ -94,6 +95,13 @@ Scroll to zoom, drag to pan, `F` to fit. Hover a site for its cells, click to pi
 click a cell to highlight its module. Search cell names (`*`, `?`), toggle groups and
 layers (routing, clock regions, pblocks), switch light/dark, save the view as PNG.
 
+Timing paths: the worst setup and hold paths are listed in the panel. Click one (or WNS,
+WHS) to draw it over the sites it goes through, from the ring to the dot, with its slack,
+clocks, logic/net split, clock regions and cells. A pinned site lists the paths through
+it. *Timing report* shows Vivado's `report_timing` of the path with the site names as
+links; *Copy Tcl* gives the `report_timing` command that opens the same path in Vivado.
+`N`/`P` step through the paths, `#path=s3` in the URL opens one.
+
 ## From a build script
 
 Export at the end of the implementation run, in the same Vivado session, to skip
@@ -101,7 +109,7 @@ opening the checkpoint again (`fpga-design-implview tcl` prints the script's pat
 
 ```tcl
 source /path/to/implview.tcl
-implview::export_all $out/implview -routing     ;# <top>.ivd.gz and <part>.ivdev.gz
+implview::export_all $out/implview -routing -paths 50  ;# <top>.ivd.gz and <part>.ivdev.gz
 ```
 
 then `fpga-design-implview render $out/implview/<top>.ivd.gz`.
@@ -110,7 +118,7 @@ then `fpga-design-implview render $out/implview/<top>.ivd.gz`.
 
 Tried on Zynq-7000 (xc7z020) and Virtex UltraScale+ HBM (xcvu37p, three SLRs).
 UltraScale, Zynq UltraScale+ and Versal are not tried yet. Nets are not drawn, only how
-much each interconnect tile is used. The picture follows Vivado's tile grid, not the die
+much each interconnect tile is used; timing paths are straight lines from site to site. The picture follows Vivado's tile grid, not the die
 to scale.
 
 Tests, from a clone: `pip install -e .[test] && pytest` (no Vivado needed).
