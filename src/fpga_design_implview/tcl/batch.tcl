@@ -5,6 +5,7 @@
 #
 # design options: -device <device.ivdev.gz>  also export the device (cache miss)
 #                 -routing                   per-tile routing usage
+#                 -paths N                   N worst setup and hold paths
 
 source [file join [file dirname [info script]] implview.tcl]
 

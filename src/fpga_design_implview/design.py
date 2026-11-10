@@ -1,10 +1,13 @@
-"""Implemented design: placed primitive cells, pblocks, routing usage.
+"""Implemented design: placed primitive cells, pblocks, routing usage, the
+worst timing paths.
 
 Read back from the gzip'ed TSV written by `implview::export_design`
 (tcl/implview.tcl).
 """
 
 import gzip
+import math
+import re
 from collections import Counter
 from dataclasses import dataclass, field
 
@@ -19,6 +22,48 @@ class Cell:
 
 
 @dataclass
+class TimingPath:
+    check: str              # setup or hold
+    slack: float | None
+    requirement: float | None
+    datapath: float | None  # data path delay, logic and net parts
+    logic: float | None
+    net: float | None
+    levels: int | None
+    skew: float | None
+    start_clock: str
+    end_clock: str
+    group: str
+    startpoint: str
+    endpoint: str
+    nodes: list = field(default_factory=list)   # (pin or port, site), in path order
+    report: str = ""                            # report_timing of the path
+
+
+def _num(v):
+    try:
+        x = float(v)
+    except ValueError:
+        return None
+    return x if math.isfinite(x) else None
+
+
+_UNESC = {"n": "\n", "t": "\t", "\\": "\\"}
+
+
+def _unesc(s):
+    return re.sub(r"\\(.)", lambda m: _UNESC.get(m.group(1), m.group(0)), s)
+
+
+def _path(r):
+    r = r + [""] * (16 - len(r))
+    lv = _num(r[8])
+    return TimingPath(r[2], _num(r[3]), _num(r[4]), _num(r[5]), _num(r[6]), _num(r[7]),
+                      int(lv) if lv is not None else None, _num(r[9]),
+                      r[10], r[11], r[12], r[13], r[14])
+
+
+@dataclass
 class Design:
     part: str = ""
     top: str = ""
@@ -28,6 +73,7 @@ class Design:
     pblocks: list = field(default_factory=list)     # (name, grid ranges)
     pads: list = field(default_factory=list)        # (site, port, a cell on its net)
     pips: dict = field(default_factory=dict)        # tile name -> used pips
+    paths: list = field(default_factory=list)       # TimingPath, setup then hold
     source: str = ""                                # checkpoint the export came from
 
     def slack(self, key):
@@ -57,6 +103,7 @@ class Design:
 
 def load_design(path):
     d = Design()
+    paths = {}
     with gzip.open(path, "rt") as f:
         header = f.readline().rstrip("\n").split("\t")
         if header[0] != "#implview-design":
@@ -74,10 +121,17 @@ def load_design(path):
                 d.pblocks.append((r[1], r[2] if len(r) > 2 else ""))
             elif k == "O":
                 d.pads.append((r[1], r[2], r[3]))
+            elif k == "T":
+                paths[r[1]] = _path(r)
+            elif k == "N" and r[1] in paths:
+                paths[r[1]].nodes.append((r[2], r[3] if len(r) > 3 else ""))
+            elif k == "Y" and r[1] in paths:
+                paths[r[1]].report = _unesc(r[2]) if len(r) > 2 else ""
             elif k == "part":
                 d.part = r[1]
             elif k == "top":
                 d.top = r[1]
             else:
                 d.info[k] = r[1] if len(r) > 1 else ""
+    d.paths = list(paths.values())
     return d
