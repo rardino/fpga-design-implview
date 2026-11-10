@@ -1,7 +1,8 @@
 """Device resource map: tiles on the Vivado tile grid, their sites and BELs.
 
 Read back from the gzip'ed TSV written by `implview::export_device`
-(tcl/implview.tcl). One file per part, cached by `implview.cache`.
+(tcl/implview.tcl), one file per part, cached by `implview.cache`; or by
+`implview.altera` for a Quartus design, on the grid of its locations.
 """
 
 import gzip
@@ -58,6 +59,11 @@ class Device:
         return self.info.get("device", self.part)
 
     @property
+    def note(self):
+        """What the reader of a picture has to know about the map."""
+        return "map inferred from the placement" if self.info.get("map") == "inferred" else ""
+
+    @property
     def width(self):
         return int(self.gx.max()) + 1
 
@@ -104,7 +110,10 @@ def load_device(path):
                 ns.append(int(r[5]))
                 slr.append(int(r[6]) if r[6] else 0)
             elif k == "S":
-                prefix, x, y = parse_site_name(r[2])
+                if len(r) > 8:          # the name does not say where the site goes
+                    prefix, x, y = r[6], int(r[7]), int(r[8])
+                else:
+                    prefix, x, y = parse_site_name(r[2])
                 dev.sites.append(Site(r[2], r[3], int(r[1]), r[4], r[5] == "1", prefix, x, y))
             elif k == "B":
                 dev.bels[r[1]] = [tuple(b.split(":", 1)) for b in r[2:] if b]

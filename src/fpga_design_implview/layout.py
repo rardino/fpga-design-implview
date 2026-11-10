@@ -18,6 +18,10 @@ quads, IO banks) then grow into it.
 
 Inside a tile, sites are grouped by the prefix of their name (SLICE, RAMB18,
 ILOGIC, ...) and laid out on a small grid from the X/Y of their names.
+
+A Quartus map (implview.altera) has no interconnect tiles: all its rows and
+columns are full size, the columns of the tile types it lists as wide (memory,
+DSP) one and a half.
 """
 
 import math
@@ -42,6 +46,7 @@ ROW_H_FULL = 1.0
 ROW_H_THIN = 0.35
 PAD = 0.08          # gap around each site, fraction of the site size
 MIN_RUN = 3         # a NULL area this many grid points wide is absorbed by its tile
+WIDE_SUBCOLS = 1.5  # width, in site columns, of the tile types a device file calls wide
 BLOCK_MIN_AREA = 0.005  # siteless hard blocks: fraction of the device area
 
 
@@ -285,8 +290,10 @@ def build_layout(dev):
     drawable = np.array([bool(s) for s in dsites])
 
     # Row heights, then column widths from the tiles in full rows (the sites
-    # of the clock rows must not widen every column).
-    row_full = np.zeros(H, bool)
+    # of the clock rows must not widen every column). A map without interconnect
+    # tiles (Quartus) is a plain grid: every row and column full size.
+    plain_grid = not int_t.any()
+    row_full = np.full(H, plain_grid)
     np.logical_or.at(row_full, dev.gy[int_t], True)
     row_h = np.where(row_full, ROW_H_FULL, ROW_H_THIN)
     col_logic = np.zeros(W, bool)
@@ -295,10 +302,12 @@ def build_layout(dev):
     in_full = drawable & row_full[dev.gy]
     np.logical_or.at(col_logic, dev.gx[in_full], True)
     np.logical_or.at(col_int, dev.gx[int_t], True)
+    wide = set(dev.info.get("wide", "").split())
     for t in np.nonzero(in_full)[0]:
         g = dev.gx[t]
-        col_sub[g] = max(col_sub[g], _tile_subcols(dev, dsites[t]))
-    col_w = np.where(col_logic, COL_W_LOGIC * np.clip(col_sub, 1, 2),
+        col_sub[g] = max(col_sub[g], _tile_subcols(dev, dsites[t]),
+                         WIDE_SUBCOLS if types[t] in wide else 1)
+    col_w = np.where(col_logic | plain_grid, COL_W_LOGIC * np.clip(col_sub, 1, 2),
                      np.where(col_int, COL_W_INT, COL_W_THIN))
     col_x = np.concatenate([[0.0], np.cumsum(col_w)])
     row_y = np.concatenate([[0.0], np.cumsum(row_h)])

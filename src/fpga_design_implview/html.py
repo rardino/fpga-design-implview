@@ -63,7 +63,7 @@ def write_html(path, dev, lay, design, place):
         pre.append(prefixes.setdefault(s.prefix, len(prefixes)))
         typ.append(types.setdefault(s.type, len(types)))
         scr.append(crs.setdefault(s.clock_region, len(crs)))
-        if s.x < 0:
+        if s.x < 0 or s.name != f"{s.prefix}_X{s.x}Y{s.y}":
             odd[k] = s.name
             sx.append(65535)
             sy.append(65535)
@@ -122,8 +122,8 @@ def write_html(path, dev, lay, design, place):
     light, dark = group_colors("light", place.groups), group_colors("dark", place.groups)
     meta = {
         "top": design.top, "part": dev.part, "family": dev.info.get("family", ""),
-        "vivado": design.info.get("vivado", ""), "date": design.info.get("date", ""),
-        "source": os.path.basename(design.source or ""),
+        "tool": design.tool(), "date": design.info.get("date", ""),
+        "source": os.path.basename(design.source or ""), "note": dev.note,
         "wns": design.slack("wns"), "whs": design.slack("whs"),
         "width": lay.width, "height": lay.height, "q": Q, "nsites": int(len(drawn)),
         "arrays": pk.index,
@@ -515,7 +515,7 @@ function esc(s) { return String(s).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": 
 function siteHead(i) {
   const pin = M.pins[i] ? ` · pin ${M.pins[i]}` : "";
   const n = A.cstart[i + 1] - A.cstart[i];
-  return `<b>${esc(siteName(i))}</b><br><span class="sub">${esc(M.types[A.type[i]])} · ${esc(M.crs[A.cr[i]] || "")}${pin}</span>` +
+  return `<b>${esc(siteName(i))}</b><br><span class="sub">${esc([M.types[A.type[i]], M.crs[A.cr[i]]].filter(Boolean).join(" · "))}${pin}</span>` +
     `<br><span class="mut">${n ? n + " cell" + (n > 1 ? "s" : "") : "unused"}</span>`;
 }
 function cellRow(k, full) {
@@ -585,7 +585,7 @@ function fmt(v) { return Number.isInteger(v) ? v.toLocaleString() : v.toLocaleSt
 function panel() {
   $("top").textContent = M.top || "design";
   $("part").textContent = M.part + (M.family ? `  (${M.family})` : "");
-  $("meta").textContent = [M.vivado && "Vivado " + M.vivado, M.date, M.source].filter(Boolean).join(" · ");
+  $("meta").textContent = [M.tool, M.date, M.source, M.note].filter(Boolean).join(" · ");
   const tm = [];
   for (const [k, v] of [["WNS", M.wns], ["WHS", M.whs]]) if (v !== null)
     tm.push(`<span class="${v < 0 ? "fail" : ""}">${k} ${v >= 0 ? "+" : ""}${v.toFixed(3)} ns${v < 0 ? " (fails)" : ""}</span>`);

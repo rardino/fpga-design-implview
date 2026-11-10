@@ -331,12 +331,12 @@ def _panel(pax, dev, design, place, colors, t, page, stats=False):
     line(design.top or "design", 16, weight="bold", dy=1.6)
     fam = dev.info.get("family", "")
     line(f"{dev.part}" + (f"  ({fam})" if fam else ""), 11, color=t["text2"], dy=1.4)
-    meta = "  ·  ".join(x for x in (f"Vivado {design.info.get('vivado', '')}".strip(),
-                                    design.info.get("date", "")) if x and x != "Vivado")
+    meta = "  ·  ".join(x for x in (design.tool(), design.info.get("date", "")) if x)
     if meta:
         line(meta, 9, color=t["text2"], dy=1.4)
-    if design.source:
-        line(os.path.basename(design.source), 9, color=t["muted"], dy=1.6)
+    source = "  ·  ".join(x for x in (os.path.basename(design.source), dev.note) if x)
+    if source:
+        line(source, 9, color=t["muted"], dy=1.6)
     wns, whs = design.slack("wns"), design.slack("whs")
     if wns is not None or whs is not None:
         parts = []
