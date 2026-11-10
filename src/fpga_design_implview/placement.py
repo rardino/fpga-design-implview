@@ -86,6 +86,8 @@ def build_placement(dev, design, groups, cell_group, hide_other=False):
 
 
 def utilization(dev, design, p):
+    if design.utilization:      # counted by the tool, in its terms (Quartus)
+        return list(design.utilization)
     rows = []
     prefix = [s.prefix for s in dev.sites]
     used = p.site_used

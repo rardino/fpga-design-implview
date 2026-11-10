@@ -7,6 +7,8 @@ of the part (slices, BRAM, DSP, URAM, IO, GT, clocking, hard blocks), lit up whe
 design uses it and colored by hierarchy, with the part, WNS/WHS and the legend. The
 part comes from the checkpoint: any design, any device.
 
+Compiled Quartus projects are read too, in a first version: see [Quartus](#quartus).
+
 ## Examples
 
 PYNQ-Z2 (xc7z020), placement and routing usage:
@@ -40,9 +42,9 @@ fpga-design-implview render top_routed.dcp -o top.html   # interactive viewer
 fpga-design-implview render path/to/impl_1 -H highlight.toml --stats --theme dark
 ```
 
-The input is a run directory, a project directory or a routed checkpoint. The output
-format follows the extension: `.png` (placement, plus `_routing.png`), `.pdf`, `.svg`,
-`.html`.
+The input is a run directory, a project directory or a routed checkpoint (or a compiled
+[Quartus](#quartus) project). The output format follows the extension: `.png` (placement,
+plus `_routing.png`), `.pdf`, `.svg`, `.html`.
 
 The first run opens the checkpoint in Vivado (batch mode) and caches the export in
 `~/.cache/implview`, so later renders take seconds. Vivado is `$IMPLVIEW_VIVADO` (or
@@ -105,6 +107,38 @@ implview::export_all $out/implview -routing     ;# <top>.ivd.gz and <part>.ivdev
 ```
 
 then `fpga-design-implview render $out/implview/<top>.ivd.gz`.
+
+## Quartus
+
+A compiled Quartus project (Altera parts) is read from the files of the compilation,
+without Quartus:
+
+```sh
+fpga-design-implview render path/to/project              # or its .qpf, its .qsf
+fpga-design-implview render path/to/project -o top.html --stats
+```
+
+The placement comes from the post-fit netlist of the EDA Netlist Writer
+(`simulation/<tool>/<revision>.vo` or `.vho`), which gives the location of every cell;
+the utilization, the pins and their I/O banks from the Fitter report; the worst slacks
+from the Timing Analyzer summary. A project compiled without a simulation tool has no
+netlist; this writes it:
+
+```sh
+quartus_eda <project> -c <revision> --simulation=on --tool=modelsim --format=verilog
+```
+
+Quartus cannot list the resources of a device, so the device map is inferred from the
+placement: every location in use, the unused LABs, memory and DSP blocks of the columns
+in use (inside the outline of what is placed), and the pads of the pins in use. A design
+that fills the device shows nearly all of it, a small one only the part around it; the
+log says how much (`LAB 1,287 of 1,395, M9K 66 of 66`). `--stats` is the utilization of
+the Fitter report: ALMs or LEs, LABs, memory blocks and bits, DSP, pins, PLLs.
+
+Tried on the files of Cyclone IV E, Cyclone V SoC and MAX 10 designs, Quartus 13.1 to
+20.1; other families and Quartus Pro are not tried. Not there yet: routing usage, timing
+paths, LogicLock regions, and the PLLs and clock buffers that Quartus places without
+coordinates (`PLL_1`, `CLKCTRL_G3`).
 
 ## Status
 

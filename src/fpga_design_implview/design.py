@@ -23,6 +23,7 @@ class Design:
     part: str = ""
     top: str = ""
     info: dict = field(default_factory=dict)
+    utilization: list = field(default_factory=list)  # (label, used, total) when the tool reports it
     cells: list = field(default_factory=list)
     pblocks: list = field(default_factory=list)     # (name, grid ranges)
     pads: list = field(default_factory=list)        # (site, port, a cell on its net)
@@ -46,6 +47,13 @@ class Design:
         except (KeyError, ValueError):
             return None
 
+    def tool(self):
+        """The tool that implemented the design, with its version."""
+        for key, name in (("vivado", "Vivado"), ("quartus", "Quartus")):
+            if self.info.get(key):
+                return f"{name} {self.info[key]}"
+        return ""
+
 
 def load_design(path):
     d = Design()
@@ -60,6 +68,8 @@ def load_design(path):
                 d.cells.append(Cell(r[5], r[1], r[2], r[3], r[4]))
             elif k == "P":
                 d.pips[r[1]] = int(r[2])
+            elif k == "Z":
+                d.utilization.append((r[1], int(r[2]), int(r[3])))
             elif k == "X":
                 d.pblocks.append((r[1], r[2] if len(r) > 2 else ""))
             elif k == "O":
