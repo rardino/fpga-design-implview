@@ -704,6 +704,7 @@ function select(i) {
 
 // ---- timing paths panel
 function slackTxt(v) { return v === null || v === undefined ? "–" : (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(3); }
+function slackNs(v) { return v === null || v === undefined ? "–" : slackTxt(v) + " ns"; }
 function ns(v) { return v === null || v === undefined ? "–" : v.toFixed(3) + " ns"; }
 function shortName(n) { const a = n.split("/"); return a.length > 3 ? "…/" + a.slice(-3).join("/") : n; }
 function pathsNote(i) {
@@ -746,7 +747,7 @@ function pathDetail() {
   const dp = p.dp > 0 && p.lg !== null && p.nt !== null
     ? `${ns(p.dp)} <span class="mut">logic ${Math.round(100 * p.lg / p.dp)}% · net ${Math.round(100 * p.nt / p.dp)}%</span>` : ns(p.dp);
   let h = `<h2>Path ${p.id} · ${p.k}</h2><div class="kv">` +
-    `<span>Slack</span><span class="${p.fails ? "neg" : ""}">${slackTxt(p.sl)} ns${p.fails ? " (fails)" : ""}</span>` +
+    `<span>Slack</span><span class="${p.fails ? "neg" : ""}">${slackNs(p.sl)}${p.fails ? " (fails)" : ""}</span>` +
     `<span>Clocks</span><span>${esc(p.sc || "–")} → ${esc(p.ec || "–")}</span>` +
     `<span>Requirement</span><span>${ns(p.rq)}</span>` +
     `<span>Data path</span><span>${dp}</span>` +
@@ -818,7 +819,7 @@ let siteByName = null;
 function openReport(j) {
   const p = P[j];
   if (!siteByName) { siteByName = new Map(); for (let i = 0; i < N; i++) siteByName.set(siteName(i), i); }
-  $("dtitle").textContent = `Path ${p.id} · ${p.k} · slack ${slackTxt(p.sl)} ns`;
+  $("dtitle").textContent = `Path ${p.id} · ${p.k} · slack ${slackNs(p.sl)}`;
   $("rep").innerHTML = esc(p.r).replace(/\b[A-Z][A-Z0-9_]*_X\d+Y\d+\b/g,
     m => siteByName.has(m) ? `<a data-s="${siteByName.get(m)}">${m}</a>` : m);
   $("rep").scrollTop = 0;
@@ -952,11 +953,13 @@ cv.addEventListener("wheel", e => {
 }, { passive: false });
 addEventListener("keydown", e => {
   if (e.target.tagName === "INPUT" && e.target.type !== "checkbox") { if (e.key === "Escape") { e.target.value = ""; search(); } return; }
-  if (e.key === "f" || e.key === "F") fit();
-  if ((e.key === "n" || e.key === "p") && P.length) {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;     // Ctrl+F, Ctrl+P: the browser's
+  const key = e.key.toLowerCase();
+  if (key === "f") fit();
+  if ((key === "n" || key === "p") && P.length) {
     const js = P.map((p, j) => p.k === pcheck ? j : -1).filter(j => j >= 0);
     const at = js.indexOf(psel);
-    selectPath(at < 0 ? js[0] : js[Math.min(Math.max(at + (e.key === "n" ? 1 : -1), 0), js.length - 1)]);
+    selectPath(at < 0 ? js[0] : js[Math.min(Math.max(at + (key === "n" ? 1 : -1), 0), js.length - 1)]);
   }
   if (e.key === "Escape") {
     if (!$("drawer").hidden) { closeReport(); return; }

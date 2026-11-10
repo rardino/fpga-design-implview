@@ -113,7 +113,9 @@ proc ::implview::_esc {s} {
 }
 
 proc ::implview::_port_site {port} {
-    set s [get_sites -quiet -of_objects [get_package_pins -quiet [get_property -quiet PACKAGE_PIN $port]]]
+    set pin [get_property -quiet PACKAGE_PIN $port]
+    if {$pin eq ""} { return "" }
+    set s [get_sites -quiet -of_objects [get_package_pins -quiet $pin]]
     return [lindex $s 0]
 }
 
@@ -139,14 +141,16 @@ proc ::implview::_timing_paths {f n} {
                 lappend rec [get_property -quiet $k $p]
             }
             puts $f [join $rec \t]
-            set sp [_as_port [get_property -quiet STARTPOINT_PIN $p]]
-            if {[llength $sp]} { puts $f "N\t$idx\t$sp\t[_port_site $sp]" }
+            set sp [get_property -quiet STARTPOINT_PIN $p]
+            set port [_as_port $sp]
+            if {[llength $port]} { puts $f "N\t$idx\t$sp\t[_port_site $port]" }
             foreach pin [get_pins -quiet -of_objects $p] {
                 set c [get_cells -quiet -of_objects $pin]
                 puts $f "N\t$idx\t$pin\t[get_property -quiet LOC $c]"
             }
-            set ep [_as_port [get_property -quiet ENDPOINT_PIN $p]]
-            if {[llength $ep]} { puts $f "N\t$idx\t$ep\t[_port_site $ep]" }
+            set ep [get_property -quiet ENDPOINT_PIN $p]
+            set port [_as_port $ep]
+            if {[llength $port]} { puts $f "N\t$idx\t$ep\t[_port_site $port]" }
             if {![catch {report_timing -of_objects $p -return_string} txt]} {
                 puts $f "Y\t$idx\t[_esc [string trim $txt]]"
             }

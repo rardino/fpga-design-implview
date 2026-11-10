@@ -118,7 +118,7 @@ then `fpga-design-implview render $out/implview/<top>.ivd.gz`.
 
 Tried on Zynq-7000 (xc7z020) and Virtex UltraScale+ HBM (xcvu37p, three SLRs).
 UltraScale, Zynq UltraScale+ and Versal are not tried yet. Nets are not drawn, only how
-much each interconnect tile is used; timing paths are straight lines from site to site. The picture follows Vivado's tile grid, not the die
-to scale.
+much each interconnect tile is used; timing paths are straight lines from site to site.
+The picture follows Vivado's tile grid, not the die to scale.
 
 Tests, from a clone: `pip install -e .[test] && pytest` (no Vivado needed).
