@@ -7,6 +7,7 @@ pages, PNG/SVG get one file per page.
 
 import os
 import re
+from collections import Counter
 
 import matplotlib
 
@@ -94,6 +95,18 @@ def block_label(tile_type):
     return words[0].rstrip("0123456789") or tile_type
 
 
+def site_labels(dev, lay):
+    """(name, rect) of the one-of-a-kind sites as large as a hard block (PS7,
+    PS8, VCU)."""
+    from .layout import BLOCK_MIN_AREA
+    r = lay.site_rect
+    with np.errstate(invalid="ignore"):
+        big = (r[:, 2] - r[:, 0]) * (r[:, 3] - r[:, 1]) >= BLOCK_MIN_AREA * lay.width * lay.height
+    n = Counter(s.prefix for s in dev.sites)
+    return [(dev.sites[i].prefix, tuple(r[i].tolist())) for i in np.nonzero(big)[0]
+            if n[dev.sites[i].prefix] == 1]
+
+
 def _scale(lay):
     """Pixels per layout unit and dpi of the pictures."""
     long_side = max(lay.width, lay.height)
@@ -125,12 +138,15 @@ def _figure(lay, theme, panel=True, panel_w=5.0):
 
 
 def _device_frame(ax, dev, lay, t, labels=True):
-    """Clock regions, SLRs and siteless blocks."""
+    """Clock regions, SLRs, siteless blocks and the names of large sites."""
     fs = max(4.0, min(9.0, 1200.0 / max(lay.width, lay.height)))
     for tile, r in lay.block_rect.items():
         _rects(ax, [r], [t["block"]], 1)
         ax.text((r[0] + r[2]) / 2, (r[1] + r[3]) / 2, block_label(dev.tile_type[tile]),
                 ha="center", va="center", color=t["muted"], fontsize=fs * 2, zorder=6)
+    for name, r in site_labels(dev, lay):
+        ax.text((r[0] + r[2]) / 2, (r[1] + r[3]) / 2, name, ha="center", va="center",
+                color=t["text2"], fontsize=fs * 2, zorder=6, path_effects=_halo(t["surface"]))
     for cr, r in lay.cr_rect:
         _outline(ax, r, t["cr"], 0.5, 5, ls=(0, (4, 3)))
         if labels:

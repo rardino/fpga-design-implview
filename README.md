@@ -150,15 +150,18 @@ coordinates (`PLL_1`, `CLKCTRL_G3`).
 
 ## Status
 
-Tried on Zynq-7000 (xc7z020), Virtex UltraScale+ HBM (xcvu37p, three SLRs) and Versal:
-designs on a VC1902, one of them with CIPS, NoC and DDR4, and the device maps of Versal
-Premium (xcvp1802, four SLRs), HBM (xcvh1582), AI Edge (xcve2302) and AI Edge Gen 2
-(xc2ve3858). UltraScale and Zynq UltraScale+ are not tried yet. Nets are not drawn, only
-how much each interconnect tile is used; timing paths are straight lines from site to site.
-The picture follows Vivado's tile grid, not the die to scale.
+Tried on designs for Zynq-7000 (xc7z020), Kintex UltraScale (xcku040), Zynq UltraScale+
+(xczu7ev, with the PS), Virtex UltraScale+ HBM (xcvu37p, three SLRs) and Versal (VC1902,
+one with CIPS, NoC and DDR4), and on the device maps of Virtex UltraScale (xcvu440, three
+SLRs; xcvu095), RFSoC (xczu28dr) and Versal Premium (xcvp1802, four SLRs), HBM (xcvh1582),
+AI Edge (xcve2302) and AI Edge Gen 2 (xc2ve3858). Nets are not drawn, only how much each
+interconnect tile is used; timing paths are straight lines from site to site. The picture
+follows Vivado's tile grid, not the die to scale.
 
 On Versal the AI Engine array and the bottom row (XPIO, memory controllers, clocking) have
-no interconnect, so their rows are thin: zoom in the PDF or the viewer. `--stats` counts
-the IOB pads (two per XPIO site), GT quads, NoC NMU/NSU, DDRMC and HBM controllers.
+no interconnect, so their rows are thin: zoom in the PDF or the viewer. `--stats` counts as
+`report_utilization` does: bonded IOB pads (two per XPIO site) and GTs, and the hard blocks
+of the part (PCIe, CMAC, Interlaken, VCU, RF data converters, SD-FEC, NoC NMU/NSU, DDRMC,
+HBM controllers).
 
 Tests, from a clone: `pip install -e .[test] && pytest` (no Vivado needed).

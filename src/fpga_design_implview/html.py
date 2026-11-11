@@ -17,7 +17,7 @@ import numpy as np
 
 from . import hier
 from .render import (THEMES, _int_spans, block_label, group_colors, label_positions, pblock_rects,
-                     text_on)
+                     site_labels, text_on)
 
 Q = 64          # layout units are stored as uint16 in 1/Q steps, fewer on large devices
 
@@ -158,6 +158,7 @@ def write_html(path, dev, lay, design, place):
         "clock_regions": [[cr.name, _q(r, q)] for cr, r in lay.cr_rect],
         "slrs": [[n, _q(r, q)] for n, r in lay.slr_rect] if len(lay.slr_rect) > 1 else [],
         "blocks": [[block_label(dev.tile_type[t]), _q(r, q)] for t, r in lay.block_rect.items()],
+        "site_labels": [[n, _q(r, q)] for n, r in site_labels(dev, lay)],
         "pblocks": [[n, [_q(r, q) for r in rects]]
                     for n, rects in pblock_rects(dev, lay, design.pblocks)],
         "labels": [[gi, x, y] for gi, x, y in labels],
@@ -555,6 +556,10 @@ function draw() {
     ctx.fillStyle = c.color; ctx.beginPath();
     for (const i of c.idx) rectPath(R, 4 * i, x0, y0, x1, y1);
     ctx.fill();
+  }
+  for (const [name, r0] of M.site_labels) {
+    const r = qr(r0);
+    text(name, sx((r[0] + r[2]) / 2), sy((r[1] + r[3]) / 2), 14, t.muted, "center");
   }
   if (layers.routing) {
     for (let i = 0; i < NH; i++) {
