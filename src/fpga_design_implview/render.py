@@ -82,10 +82,16 @@ def _halo(color):
     return [pe.withStroke(linewidth=3, foreground=color)]
 
 
+# Words of a tile type that do not name the block: configuration frame and
+# its pipeline, terminations (CFRM_CPIPE_TERM_CPM5_CORE is the CPM).
+BLOCK_FILLER = {"CFRM", "CPIPE", "TERM", "CORE", "TILE"}
+
+
 def block_label(tile_type):
-    """HBM_DMAH_FT -> HBM, PSS2 -> PSS."""
+    """HBM_DMAH_FT -> HBM, PSS2 -> PSS, CFRM_CPM5_TILE -> CPM."""
     t = re.sub(r"(_FT|_L|_R)+$", "", tile_type)
-    return t.split("_")[0].rstrip("0123456789") or tile_type
+    words = [w for w in t.split("_") if w not in BLOCK_FILLER] or [t]
+    return words[0].rstrip("0123456789") or tile_type
 
 
 def _scale(lay):

@@ -10,6 +10,7 @@ worst timing paths drawn over the sites they go through.
 import base64
 import gzip
 import json
+import math
 import os
 
 import numpy as np
@@ -18,7 +19,7 @@ from . import hier
 from .render import (THEMES, _int_spans, block_label, group_colors, label_positions, pblock_rects,
                      text_on)
 
-Q = 64          # layout units are stored as uint16 in 1/Q steps
+Q = 64          # layout units are stored as uint16 in 1/Q steps, fewer on large devices
 
 
 class _Pack:
@@ -43,16 +44,22 @@ def _b64gz(data):
     return base64.b64encode(gzip.compress(data, 6)).decode("ascii")
 
 
-def _q(r):
-    return [int(round(v * Q)) for v in r]
+def _quant(lay):
+    """Steps per layout unit: the far edge of the device must fit in uint16."""
+    return min(Q, int(65535 // math.ceil(max(lay.width, lay.height))))
+
+
+def _q(r, q):
+    return [int(round(v * q)) for v in r]
 
 
 def write_html(path, dev, lay, design, place):
     pk = _Pack()
+    q = _quant(lay)
     drawn = np.nonzero(np.isfinite(lay.site_rect[:, 0]))[0]
     pos = np.full(len(dev.sites), -1, np.int64)
     pos[drawn] = np.arange(len(drawn))
-    pk.add("rect", np.round(lay.site_rect[drawn] * Q).astype(np.int64).ravel(), "u2")
+    pk.add("rect", np.round(lay.site_rect[drawn] * q).astype(np.int64).ravel(), "u2")
     pk.add("group", place.site_group[drawn], "i1")
     pk.add("overlay", lay.site_overlay[drawn], "u1")
 
@@ -113,7 +120,7 @@ def write_html(path, dev, lay, design, place):
         spans = _int_spans(dev, lay)[hot]
         spans[:, 0] = np.maximum(spans[:, 0], 0)
         spans[:, 2] = np.minimum(spans[:, 2], lay.width)
-        pk.add("heat_rect", np.round(spans * Q).astype(np.int64).ravel(), "u2")
+        pk.add("heat_rect", np.round(spans * q).astype(np.int64).ravel(), "u2")
         pk.add("heat_val", np.minimum(use[hot], 65535), "u2")
         heat = {"n": int(hot.sum()), "top": float(np.percentile(use[hot], 99)) if hot.any() else 1.0}
 
@@ -138,7 +145,7 @@ def write_html(path, dev, lay, design, place):
         "tool": design.tool(), "date": design.info.get("date", ""),
         "source": os.path.basename(design.source or ""), "note": dev.note,
         "wns": design.slack("wns"), "whs": design.slack("whs"),
-        "width": lay.width, "height": lay.height, "q": Q, "nsites": int(len(drawn)),
+        "width": lay.width, "height": lay.height, "q": q, "nsites": int(len(drawn)),
         "arrays": pk.index,
         "prefixes": list(prefixes), "types": list(types), "crs": list(crs),
         "odd": odd, "pins": {int(pos[i]): dev.pins[s.name] for i, s in enumerate(dev.sites)
@@ -148,10 +155,11 @@ def write_html(path, dev, lay, design, place):
                     "ink_light": text_on(a), "ink_dark": text_on(b)}
                    for g, n, a, b in zip(place.groups, names, light, dark)],
         "util": [[lab, used, total] for lab, used, total in place.utilization],
-        "clock_regions": [[cr.name, _q(r)] for cr, r in lay.cr_rect],
-        "slrs": [[n, _q(r)] for n, r in lay.slr_rect] if len(lay.slr_rect) > 1 else [],
-        "blocks": [[block_label(dev.tile_type[t]), _q(r)] for t, r in lay.block_rect.items()],
-        "pblocks": [[n, [_q(r) for r in rects]] for n, rects in pblock_rects(dev, lay, design.pblocks)],
+        "clock_regions": [[cr.name, _q(r, q)] for cr, r in lay.cr_rect],
+        "slrs": [[n, _q(r, q)] for n, r in lay.slr_rect] if len(lay.slr_rect) > 1 else [],
+        "blocks": [[block_label(dev.tile_type[t]), _q(r, q)] for t, r in lay.block_rect.items()],
+        "pblocks": [[n, [_q(r, q) for r in rects]]
+                    for n, rects in pblock_rects(dev, lay, design.pblocks)],
         "labels": [[gi, x, y] for gi, x, y in labels],
         "heat": heat,
         "tpaths": tpaths,
@@ -656,7 +664,9 @@ function pick(px, py) {
 // ---- tooltip and selection
 function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 function siteHead(i) {
-  const pin = M.pins[i] ? ` · pin ${M.pins[i]}` : "";
+  const pins = M.pins[i] ? M.pins[i].split(" ") : [];
+  const pin = pins.length ? ` · pin${pins.length > 1 ? "s" : ""} ${pins.slice(0, 4).join(" ")}` +
+    (pins.length > 4 ? ` +${pins.length - 4}` : "") : "";
   const n = A.cstart[i + 1] - A.cstart[i];
   return `<b>${esc(siteName(i))}</b><br><span class="sub">${esc([M.types[A.type[i]], M.crs[A.cr[i]]].filter(Boolean).join(" · "))}${pin}</span>` +
     `<br><span class="mut">${n ? n + " cell" + (n > 1 ? "s" : "") : "unused"}</span>`;

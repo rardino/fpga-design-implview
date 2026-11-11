@@ -14,7 +14,9 @@ Tiles that are taller than one grid point (BRAM, DSP, IOB pairs, GT quads,
 hard blocks) sit on one grid point with NULL tiles above them. Each tile
 claims the free NULL points above it in its column, up to the edge of its
 clock region; tiles that are still next to a NULL area (the Zynq PS, GT
-quads, IO banks) then grow into it.
+quads, IO banks) then grow into it. The tiles of a clock region without
+interconnect (on Versal the AI Engine array and the bottom row of XPIO,
+memory controllers and clocking) stay inside it.
 
 Inside a tile, sites are grouped by the prefix of their name (SLICE, RAMB18,
 ILOGIC, ...) and laid out on a small grid from the X/Y of their names.
@@ -32,8 +34,15 @@ import numpy as np
 
 INT_TYPE_RE = re.compile(r"INT(_[LR])?$")
 
-# Sites that are never drawn (constant sources in every INT/DSP tile).
-IGNORED_PREFIXES = {"TIEOFF"}
+# Sites that are never drawn, by the start of their name: no cell is placed
+# on them. Constant sources in every INT/DSP tile; on Versal the interconnect
+# input registers of the interface tiles (IRI_QUAD, turned on by the router)
+# and the leaf clock, clock delay and test sites of the clock rows.
+IGNORED_PREFIXES = ("TIEOFF", "IRI_QUAD", "BUFDIV_LEAF", "GCLK_DELAY", "RCLK")
+
+# Siteless tiles that are never drawn as hard blocks: terminations and row or
+# column breaks next to an empty area (Versal).
+NOT_BLOCKS = ("TERM_", "RBRK_", "CBRK_")
 
 # A big site that covers the smaller ones of the same tile: the smaller ones
 # are drawn as the base layer, the big one on top only when used.
@@ -83,7 +92,7 @@ def _drawable_sites(dev):
     """Per tile, the indices of the sites that are drawn."""
     out = [[] for _ in dev.tile_name]
     for i, s in enumerate(dev.sites):
-        if s.prefix not in IGNORED_PREFIXES:
+        if not s.prefix.startswith(IGNORED_PREFIXES):
             out[s.tile].append(i)
     return out
 
@@ -158,9 +167,10 @@ def _edge_labels(comp, rect, H, W):
     return set(np.concatenate(edge).tolist()) - {-1} if edge else set()
 
 
-def _absorb(owner, comp, boxes, t, rect, H, W):
+def _absorb(owner, comp, boxes, t, rect, H, W, bound=None):
     """Grow over the bounding boxes of the NULL areas next to the tile, as long
-    as nothing else is inside them. Returns None if nothing was taken."""
+    as nothing else is inside them (and they are inside bound, if given).
+    Returns None if nothing was taken."""
     r = rect
     tried = set()
     while True:
@@ -168,6 +178,9 @@ def _absorb(owner, comp, boxes, t, rect, H, W):
             tried.add(c)
             bx0, by0, bx1, by1 = boxes[c]
             u = (min(bx0, r[0]), min(by0, r[1]), max(bx1, r[2]), max(by1, r[3]))
+            if bound and (u[0] < bound[0] or u[1] < bound[1]
+                          or u[2] > bound[2] or u[3] > bound[3]):
+                continue
             sub = owner[u[1]:u[3] + 1, u[0]:u[2] + 1]
             if ((sub == -1) | (sub == -2) | (sub == t)).all():
                 r = u
@@ -326,9 +339,15 @@ def build_layout(dev):
 
     # A tall tile never spans two clock regions.
     cr_id = np.full((H, W), -1, np.int64)
+    cr_box = []
     for k, cr in enumerate(dev.clock_regions):
-        cr_id[min(cr.gy0, cr.gy1):max(cr.gy0, cr.gy1) + 1,
-              min(cr.gx0, cr.gx1):max(cr.gx0, cr.gx1) + 1] = k
+        cr_box.append((min(cr.gx0, cr.gx1), min(cr.gy0, cr.gy1),
+                       max(cr.gx0, cr.gx1), max(cr.gy0, cr.gy1)))
+        cr_id[cr_box[k][1]:cr_box[k][3] + 1, cr_box[k][0]:cr_box[k][2] + 1] = k
+    # Clock regions without interconnect (on Versal the AI Engine array and
+    # the bottom row of XPIO, memory controllers and clocking): their tiles
+    # do not grow out of them.
+    cr_int = set(cr_id[dev.gy[int_t], dev.gx[int_t]].tolist())
     ext = {}
     for t in np.nonzero(drawable)[0]:
         x, y = int(dev.gx[t]), int(dev.gy[t])
@@ -344,11 +363,18 @@ def build_layout(dev):
     # the NULL points next to them if those are wide enough (GT quads, IO).
     comp, boxes = _components(owner == -1, nt)
     plain = nt == 0
+    inside = {}
     for t, (x0, y0, x1, y1) in ext.items():
-        r = _absorb(owner, comp, boxes, t, (x0, y0, x1, y1), H, W)
-        if r is None and max(_free_run(owner, plain, y0, y1, x0, -1, W),
-                             _free_run(owner, plain, y0, y1, x0, 1, W)) >= MIN_RUN:
-            r = _grow(owner, plain, x0, y0, x1, y1, H, W)
+        k = int(cr_id[y1, x0])
+        bound, ok = None, plain
+        if k >= 0 and k not in cr_int:
+            if k not in inside:
+                inside[k] = plain & (cr_id == k)
+            bound, ok = cr_box[k], inside[k]
+        r = _absorb(owner, comp, boxes, t, (x0, y0, x1, y1), H, W, bound)
+        if r is None and max(_free_run(owner, ok, y0, y1, x0, -1, W),
+                             _free_run(owner, ok, y0, y1, x0, 1, W)) >= MIN_RUN:
+            r = _grow(owner, ok, x0, y0, x1, y1, H, W)
         if r is not None:
             gx0, gy0, gx1, gy1 = r
             sub = owner[gy0:gy1 + 1, gx0:gx1 + 1]
@@ -365,7 +391,8 @@ def build_layout(dev):
     near[:-1, :] |= free[1:, :]
     near[:, 1:] |= free[:, :-1]
     near[:, :-1] |= free[:, 1:]
-    cand = ~drawable & ~null_t & ~int_t & near[dev.gy, dev.gx]
+    cand = ~drawable & ~null_t & ~int_t & near[dev.gy, dev.gx] \
+        & np.array([not t.startswith(NOT_BLOCKS) for t in types])
     for t in np.nonzero(cand)[0]:
         x, y = int(dev.gx[t]), int(dev.gy[t])
         if owner[y, x] != -2:
