@@ -14,9 +14,10 @@ Tiles that are taller than one grid point (BRAM, DSP, IOB pairs, GT quads,
 hard blocks) sit on one grid point with NULL tiles above them. Each tile
 claims the free NULL points above it in its column, up to the edge of its
 clock region; tiles that are still next to a NULL area (the Zynq PS, GT
-quads, IO banks) then grow into it. The tiles of a clock region without
+quads, IO banks) then grow into it. The tiles of clock regions without
 interconnect (on Versal the AI Engine array and the bottom row of XPIO,
-memory controllers and clocking) stay inside it.
+memory controllers and clocking, on Zynq UltraScale+ the PS and VCU) stay
+inside them.
 
 Inside a tile, sites are grouped by the prefix of their name (SLICE, RAMB18,
 ILOGIC, ...) and laid out on a small grid from the X/Y of their names.
@@ -47,6 +48,11 @@ NOT_BLOCKS = ("TERM_", "RBRK_", "CBRK_")
 # A big site that covers the smaller ones of the same tile: the smaller ones
 # are drawn as the base layer, the big one on top only when used.
 OVERLAYS = {"RAMB36": "RAMB18"}
+
+# Small sites of IO banks and their PHY (VREF, bias, RIU): stacked in a thin
+# strip on the right of the tile, the IO keeps the rest.
+SMALL_PREFIXES = ("HPIO_VREF", "HDIO_VREF", "BIAS", "HDIO_BIAS", "RIU_OR", "XIPHY_FEEDTHROUGH",
+                  "RPI_HD_APB")
 
 COL_W_LOGIC = 1.0
 COL_W_INT = 0.4
@@ -167,10 +173,10 @@ def _edge_labels(comp, rect, H, W):
     return set(np.concatenate(edge).tolist()) - {-1} if edge else set()
 
 
-def _absorb(owner, comp, boxes, t, rect, H, W, bound=None):
+def _absorb(owner, comp, boxes, t, rect, H, W, bound=None, forbid=None):
     """Grow over the bounding boxes of the NULL areas next to the tile, as long
-    as nothing else is inside them (and they are inside bound, if given).
-    Returns None if nothing was taken."""
+    as nothing else is inside them (and they are inside bound and outside
+    forbid, if given). Returns None if nothing was taken."""
     r = rect
     tried = set()
     while True:
@@ -180,6 +186,8 @@ def _absorb(owner, comp, boxes, t, rect, H, W, bound=None):
             u = (min(bx0, r[0]), min(by0, r[1]), max(bx1, r[2]), max(by1, r[3]))
             if bound and (u[0] < bound[0] or u[1] < bound[1]
                           or u[2] > bound[2] or u[3] > bound[3]):
+                continue
+            if forbid is not None and forbid[u[1]:u[3] + 1, u[0]:u[2] + 1].any():
                 continue
             sub = owner[u[1]:u[3] + 1, u[0]:u[2] + 1]
             if ((sub == -1) | (sub == -2) | (sub == t)).all():
@@ -225,19 +233,28 @@ def _place_sites(dev, sites, rect, out, overlay):
         if big in groups and small in groups:
             over[big] = groups.pop(big)
 
-    names = sorted(groups)
-    w, h = x1 - x0, y1 - y0
     cells = {}
-    big_area = w * h >= 16 and len(names) > 1
-    singles = [n for n in names if len(groups[n]) == 1]
+    names = sorted(groups)
+    helpers = [n for n in names if n.startswith(SMALL_PREFIXES)]
+    if helpers and len(helpers) < len(names):
+        sw = min(0.12 * (x1 - x0), 0.5)
+        x1 -= sw
+        sh = (y1 - y0) / len(helpers)
+        for k, n in enumerate(helpers):
+            cells[n] = (x1, y0 + k * sh, x1 + sw, y0 + (k + 1) * sh)
+        names = [n for n in names if n not in helpers]
+        rect = (x0, y0, x1, y1)
+
+    w, h = x1 - x0, y1 - y0
     many = [n for n in names if len(groups[n]) >= 8]
-    if big_area and singles and many:
-        # Large hard block with many small sites (PS7 and its MIO pads):
-        # the small ones go in strips on the left, the block gets the rest.
-        strip = min(0.12 * w, 1.0)
+    rest = [n for n in names if n not in many]
+    if w * h >= 16 and many and rest:
+        # Large hard blocks with many small sites (PS7 and its MIO pads, a GT
+        # quad or an MMCM and their clock buffers): the small ones go in
+        # strips on the left, the blocks get the rest, at least half the tile.
+        strip = min(0.12 * w, 1.0, w / 2 / len(many))
         for k, n in enumerate(many):
             cells[n] = (x0 + k * strip, y0, x0 + (k + 1) * strip, y1)
-        rest = [n for n in names if n not in many]
         _split(cells, rest, (x0 + len(many) * strip, y0, x1, y1), groups, dev)
     else:
         _split(cells, names, rect, groups, dev)
@@ -348,12 +365,30 @@ def build_layout(dev):
     # the bottom row of XPIO, memory controllers and clocking): their tiles
     # do not grow out of them.
     cr_int = set(cr_id[dev.gy[int_t], dev.gx[int_t]].tolist())
+    # Such regions stacked over the same columns are one area (the PS and VCU
+    # of a Zynq UltraScale+ span four, a break row between each two).
+    stacks = []                                 # [x0, y0, x1, y1, regions]
+    for k in sorted(set(range(len(cr_box))) - cr_int, key=lambda k: cr_box[k][1]):
+        x0, y0, x1, y1 = cr_box[k]
+        s = next((s for s in stacks if s[0] == x0 and s[2] == x1 and 0 < y0 - s[3] <= 2), None)
+        if s is None:
+            stacks.append([x0, y0, x1, y1, [k]])
+        else:
+            s[3] = y1
+            s[4].append(k)
+    area = {k: tuple(s[:4]) for s in stacks for k in s[4]}
+    # Outside the clock regions (the PS of an RFSoC) a tall tile stays in the
+    # rows of one row of regions.
+    band = np.full(H, -1, np.int64)
+    for x0, y0, x1, y1 in cr_box:
+        band[y0:y1 + 1] = y0
     ext = {}
     for t in np.nonzero(drawable)[0]:
         x, y = int(dev.gx[t]), int(dev.gy[t])
+        same = cr_id[:, x] if cr_id[y, x] >= 0 else band
         y0 = y
         while y0 > 0 and owner[y0 - 1, x] == -1 and nt[y0 - 1, x] == 0 \
-                and cr_id[y0 - 1, x] == cr_id[y, x]:
+                and same[y0 - 1] == same[y]:
             y0 -= 1
         owner[y0:y, x] = t
         ext[t] = (x, y0, x, y)
@@ -363,15 +398,27 @@ def build_layout(dev):
     # the NULL points next to them if those are wide enough (GT quads, IO).
     comp, boxes = _components(owner == -1, nt)
     plain = nt == 0
+    # The tiles of the regions without interconnect stay inside their area;
+    # one-row tiles of the other regions do not grow into it (the BUFG_PS
+    # clock rows next to the Zynq UltraScale+ PS cut it in strips).
+    in_area = np.zeros((H, W), bool)
+    for x0, y0, x1, y1 in set(area.values()):
+        in_area[y0:y1 + 1, x0:x1 + 1] = True
+    outside = plain & ~in_area if in_area.any() else None
     inside = {}
     for t, (x0, y0, x1, y1) in ext.items():
         k = int(cr_id[y1, x0])
-        bound, ok = None, plain
-        if k >= 0 and k not in cr_int:
-            if k not in inside:
-                inside[k] = plain & (cr_id == k)
-            bound, ok = cr_box[k], inside[k]
-        r = _absorb(owner, comp, boxes, t, (x0, y0, x1, y1), H, W, bound)
+        bound, ok, forbid = None, plain, None
+        if k in area:
+            bound = area[k]
+            if bound not in inside:
+                m = np.zeros((H, W), bool)
+                m[bound[1]:bound[3] + 1, bound[0]:bound[2] + 1] = True
+                inside[bound] = plain & m
+            ok = inside[bound]
+        elif y0 == y1 and outside is not None:
+            ok, forbid = outside, in_area
+        r = _absorb(owner, comp, boxes, t, (x0, y0, x1, y1), H, W, bound, forbid)
         if r is None and max(_free_run(owner, ok, y0, y1, x0, -1, W),
                              _free_run(owner, ok, y0, y1, x0, 1, W)) >= MIN_RUN:
             r = _grow(owner, ok, x0, y0, x1, y1, H, W)
