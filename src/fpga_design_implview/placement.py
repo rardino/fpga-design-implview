@@ -12,7 +12,7 @@ LUT_BEL_RE = re.compile(r"^([A-H])[56]LUT$")
 FF_BEL_RE = re.compile(r"^[A-H]5?FF2?$")
 
 # Utilization rows: label, site name prefix test. A row is shown when the
-# device has such sites; IOB counts pads (two per site on Versal).
+# device has such sites; IOB counts bonded pads (two per site on Versal).
 RESOURCES = [
     ("SLICE", lambda p: p == "SLICE"),
     ("BRAM", lambda p: p in ("RAMB36", "RAMB18")),
@@ -22,7 +22,8 @@ RESOURCES = [
     ("GT", lambda p: p.startswith("GT") and "CHANNEL" in p),
     ("GT quad", lambda p: p.startswith("GT") and p.endswith("_QUAD")),     # Versal
     ("BUFG", lambda p: p.startswith("BUFG")),
-    ("MMCM/PLL", lambda p: p.startswith(("MMCM", "PLL")) or p in ("DPLL", "XPLL", "X5PLL")),
+    ("MMCM/PLL", lambda p: (p.startswith(("MMCM", "PLL")) and p != "PLL_SELECT_SITE")
+                           or p in ("DPLL", "XPLL", "X5PLL")),
     ("NoC NMU", lambda p: p.startswith(("NOC_NMU", "NOC2_NMU"))),
     ("NoC NSU", lambda p: p.startswith(("NOC_NSU", "NOC2_NSU"))),
     ("DDRMC", lambda p: p.startswith("DDRMC") and not p.endswith("_RIU")),
@@ -124,8 +125,9 @@ def utilization(dev, design, p):
             u18 = sum(1 for i in idx if prefix[i] == "RAMB18" and used[i])
             rows.append((label, len(u36) + u18 / 2, n36))
         elif label == "IOB":
-            # pads, from the PAD BELs of each site type; a used site counts
-            # its ports (both pads of a Versal site can be in use)
+            # bonded pads, from the PAD BELs of each site type; a used site
+            # counts its ports (both pads of a Versal site can be in use)
+            idx = [i for i in idx if dev.sites[i].bonded] or idx
             pads = {st: max(1, sum(1 for b, _ in bels if PAD_BEL_RE.match(b)))
                     for st, bels in dev.bels.items()}
             ports = Counter(site for site, _port, _cell in design.pads)

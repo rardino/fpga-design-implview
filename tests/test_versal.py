@@ -7,8 +7,8 @@ Grid, 10 columns x 12 rows (row 0 at the top), three clock regions:
   rows 3..9   X0Y1, fabric: GT quad in col 0, INT in cols 1, 4 and 6, CLE in
               col 2, an interface tile with only IRI_QUAD sites in col 3, a
               DSP tile (two DSP58 and a DSP58_CPLX) and a URAM tile in col 5
-  rows 10..11 X0Y0, bottom row, no interconnect: an XPIO tile (two IOB sites
-              of two pads each) and an XPLL
+  rows 10..11 X0Y0, bottom row, no interconnect: an XPIO tile (two bonded
+              IOB sites of two pads each, one unbonded) and an XPLL
   cols 7, 8   NULL from top to bottom, but for a CPM configuration frame tile
               (CFRM_CPM_TILE, siteless) at (7, 2)
   col 9       terminations (TERM_R), siteless
@@ -21,8 +21,9 @@ import pytest
 
 
 def _lines(part, w, h, tiles, regions):
-    """Device file lines: tiles {(x, y): (type, [(site, site type)])}, the
-    rest NULL; regions [(name, row of the grid top, bottom)], full width."""
+    """Device file lines: tiles {(x, y): (type, [(site, site type, bonded?)])},
+    the rest NULL; regions [(name, row of the grid top, bottom)], full width.
+    XPIOB sites are bonded unless they say otherwise."""
     out = ["#implview-device\t1", f"part\t{part}", "architecture\tversal", "family\tversaltest"]
     grid = {(x, y): tiles.get((x, y), ("NULL", [])) for x in range(w) for y in range(h)}
     index = {}
@@ -31,8 +32,9 @@ def _lines(part, w, h, tiles, regions):
         out.append(f"T\t{ty}_X{x}Y{h - 1 - y}\t{ty}\t{x}\t{y}\t{len(ss)}\t0")
     for (x, y), (ty, ss) in grid.items():
         cr = next(n for n, y0, y1 in regions if y0 <= y <= y1)
-        for s, st in ss:
-            out.append(f"S\t{index[(x, y)]}\t{s}\t{st}\t{cr}\t{int(st == 'XPIOB')}")
+        for s, st, *bonded in ss:
+            b = bonded[0] if bonded else st == "XPIOB"
+            out.append(f"S\t{index[(x, y)]}\t{s}\t{st}\t{cr}\t{int(b)}")
     for k, (n, y0, y1) in enumerate(regions):
         out.append(f"R\t{n}\t{len(regions) - 1 - k}\t0\t0\t{y0}\t{w - 1}\t{y1}\tSLR0")
     out.append("L\tSLR0\t0\t1\t0")
@@ -56,8 +58,9 @@ def _device_lines():
                                    ("DSP58_CPLX_X0Y0", "DSP58_CPLX")])
     t[5, 5] = ("URAM_DELAY_ROCF_TL_TILE", [("URAM288_X0Y0", "URAM288"),
                                            ("URAM_CAS_DLY_X0Y0", "URAM_CAS_DLY")])
-    t[2, 11] = ("XPIO_NIBBLE_SC", [("IOB_X0Y0", "XPIOB"), ("IOB_X0Y1", "XPIOB")])
-    t[5, 11] = ("CMT_XPLL", [("XPLL_X0Y0", "XPLL")])
+    t[2, 11] = ("XPIO_NIBBLE_SC", [("IOB_X0Y0", "XPIOB"), ("IOB_X0Y1", "XPIOB"),
+                                   ("IOB_X0Y2", "XPIOB", False)])
+    t[5, 11] = ("CMT_XPLL", [("XPLL_X0Y0", "XPLL"), ("PLL_SELECT_SITE_X0Y0", "PLL_SELECT_SITE")])
     for y in range(12):
         t[9, y] = ("TERM_R", [])
     out = _lines("xcvtest-pkg-1", 10, 12, t, [("X0Y2", 0, 2), ("X0Y1", 3, 9), ("X0Y0", 10, 11)])
@@ -157,9 +160,9 @@ def test_utilization(versal):
     util = {k: (u, t) for k, u, t in p.utilization}
     assert util["DSP"] == (1, 2)        # DSP58_CPLX is not a DSP of its own
     assert util["URAM"] == (0, 1)       # nor URAM_CAS_DLY a URAM
-    assert util["IOB"] == (2, 4)        # pads: two per site, both in use
+    assert util["IOB"] == (2, 4)        # bonded pads: two per site, both in use
     assert util["GT quad"] == (0, 1)
-    assert util["MMCM/PLL"] == (0, 1)
+    assert util["MMCM/PLL"] == (0, 1)   # PLL_SELECT_SITE is a clock mux
     assert util["LUT"] == (1, 7 * 2) and util["FF"] == (1, 7 * 2)
 
 
