@@ -158,7 +158,7 @@ def write_html(path, dev, lay, design, place):
         "clock_regions": [[cr.name, _q(r, q)] for cr, r in lay.cr_rect],
         "slrs": [[n, _q(r, q)] for n, r in lay.slr_rect] if len(lay.slr_rect) > 1 else [],
         "blocks": [[block_label(dev.tile_type[t]), _q(r, q)] for t, r in lay.block_rect.items()],
-        "site_labels": [[n, _q(r, q)] for n, r in site_labels(dev, lay)],
+        "site_labels": [[n, _q(r, q)] for n, r in site_labels(dev, lay, set(names))],
         "pblocks": [[n, [_q(r, q) for r in rects]]
                     for n, rects in pblock_rects(dev, lay, design.pblocks)],
         "labels": [[gi, x, y] for gi, x, y in labels],

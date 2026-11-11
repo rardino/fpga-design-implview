@@ -95,16 +95,16 @@ def block_label(tile_type):
     return words[0].rstrip("0123456789") or tile_type
 
 
-def site_labels(dev, lay):
+def site_labels(dev, lay, skip=()):
     """(name, rect) of the one-of-a-kind sites as large as a hard block (PS7,
-    PS8, VCU)."""
+    PS8, VCU), but for the names in skip (a group label says it already)."""
     from .layout import BLOCK_MIN_AREA
     r = lay.site_rect
     with np.errstate(invalid="ignore"):
         big = (r[:, 2] - r[:, 0]) * (r[:, 3] - r[:, 1]) >= BLOCK_MIN_AREA * lay.width * lay.height
     n = Counter(s.prefix for s in dev.sites)
     return [(dev.sites[i].prefix, tuple(r[i].tolist())) for i in np.nonzero(big)[0]
-            if n[dev.sites[i].prefix] == 1]
+            if n[dev.sites[i].prefix] == 1 and dev.sites[i].prefix not in skip]
 
 
 def _scale(lay):
@@ -137,14 +137,14 @@ def _figure(lay, theme, panel=True, panel_w=5.0):
     return fig, ax, pax, dpi
 
 
-def _device_frame(ax, dev, lay, t, labels=True):
+def _device_frame(ax, dev, lay, t, labels=True, skip=()):
     """Clock regions, SLRs, siteless blocks and the names of large sites."""
     fs = max(4.0, min(9.0, 1200.0 / max(lay.width, lay.height)))
     for tile, r in lay.block_rect.items():
         _rects(ax, [r], [t["block"]], 1)
         ax.text((r[0] + r[2]) / 2, (r[1] + r[3]) / 2, block_label(dev.tile_type[tile]),
                 ha="center", va="center", color=t["muted"], fontsize=fs * 2, zorder=6)
-    for name, r in site_labels(dev, lay):
+    for name, r in site_labels(dev, lay, skip):
         ax.text((r[0] + r[2]) / 2, (r[1] + r[3]) / 2, name, ha="center", va="center",
                 color=t["text2"], fontsize=fs * 2, zorder=6, path_effects=_halo(t["surface"]))
     for cr, r in lay.cr_rect:
@@ -441,7 +441,7 @@ def placement_figure(dev, lay, design, place, theme="light", labels=True, stats=
     t = THEMES[theme]
     colors = group_colors(theme, place.groups)
     fig, ax, pax, dpi = _figure(lay, theme, panel)
-    _device_frame(ax, dev, lay, t, labels)
+    _device_frame(ax, dev, lay, t, labels, set(hier.short_labels(place.groups)) if labels else ())
     _rects(ax, lay.int_rect, [t["int_tile"]] * len(lay.int_rect), 1)
 
     site_color = [t["unused"]] * len(dev.sites)

@@ -94,6 +94,7 @@ def test_large_sites_are_labeled(zuplus, tmp_path):
     dev, des, lay = zuplus
     names = [n for n, _ in site_labels(dev, lay)]
     assert {"PS8", "VCU"} <= set(names) and "BUFG_PS" not in names and "SLICE" not in names
+    assert "PS8" not in [n for n, _ in site_labels(dev, lay, {"PS8"})]    # a group says it
     groups, cg, _ = group_cells(des)
     write_html(str(tmp_path / "z.html"), dev, lay, des, build_placement(dev, des, groups, cg))
     assert [n for n, _ in _page_meta((tmp_path / "z.html").read_text())["site_labels"]] == names
