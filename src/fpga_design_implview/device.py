@@ -52,7 +52,7 @@ class Device:
     bels: dict = field(default_factory=dict)        # site type -> [(bel, bel type)]
     clock_regions: list = field(default_factory=list)
     slrs: list = field(default_factory=list)        # (name, index, is_master, config order)
-    pins: dict = field(default_factory=dict)        # site name -> package pin
+    pins: dict = field(default_factory=dict)        # site name -> package pins, space separated
 
     @property
     def name(self):
@@ -122,8 +122,8 @@ def load_device(path):
                     r[1], int(r[2]), int(r[3]), int(r[4]), int(r[5]), int(r[6]), int(r[7]), r[8]))
             elif k == "L":
                 dev.slrs.append((r[1], int(r[2]), r[3] == "1", int(r[4]) if r[4] else 0))
-            elif k == "K":
-                dev.pins[r[2]] = r[1]
+            elif k == "K":          # a Versal IO site has two pads, a GT many
+                dev.pins[r[2]] = f"{dev.pins[r[2]]} {r[1]}" if r[2] in dev.pins else r[1]
             elif k == "part":
                 dev.part = r[1]
             else:

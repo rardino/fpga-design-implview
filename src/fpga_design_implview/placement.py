@@ -11,17 +11,24 @@ from . import hier
 LUT_BEL_RE = re.compile(r"^([A-H])[56]LUT$")
 FF_BEL_RE = re.compile(r"^[A-H]5?FF2?$")
 
-# Utilization rows: label, site name prefix test, weight per used site.
+# Utilization rows: label, site name prefix test. A row is shown when the
+# device has such sites; IOB counts pads (two per site on Versal).
 RESOURCES = [
     ("SLICE", lambda p: p == "SLICE"),
     ("BRAM", lambda p: p in ("RAMB36", "RAMB18")),
-    ("URAM", lambda p: p.startswith("URAM")),
-    ("DSP", lambda p: p.startswith("DSP")),
+    ("URAM", lambda p: p == "URAM288"),
+    ("DSP", lambda p: p.startswith("DSP") and not p.endswith("_CPLX")),
     ("IOB", lambda p: p == "IOB" or p.startswith("IOB")),
     ("GT", lambda p: p.startswith("GT") and "CHANNEL" in p),
+    ("GT quad", lambda p: p.startswith("GT") and p.endswith("_QUAD")),     # Versal
     ("BUFG", lambda p: p.startswith("BUFG")),
-    ("MMCM/PLL", lambda p: p.startswith(("MMCM", "PLL"))),
+    ("MMCM/PLL", lambda p: p.startswith(("MMCM", "PLL")) or p in ("DPLL", "XPLL", "X5PLL")),
+    ("NoC NMU", lambda p: p.startswith(("NOC_NMU", "NOC2_NMU"))),
+    ("NoC NSU", lambda p: p.startswith(("NOC_NSU", "NOC2_NSU"))),
+    ("DDRMC", lambda p: p.startswith("DDRMC") and not p.endswith("_RIU")),
+    ("HBM MC", lambda p: p == "HBM_MC"),
 ]
+PAD_BEL_RE = re.compile(r"^PAD(_[MS])?$")
 
 
 @dataclass
@@ -116,6 +123,16 @@ def utilization(dev, design, p):
             u36 = {i for i in idx if prefix[i] == "RAMB36" and used[i]}
             u18 = sum(1 for i in idx if prefix[i] == "RAMB18" and used[i])
             rows.append((label, len(u36) + u18 / 2, n36))
+        elif label == "IOB":
+            # pads, from the PAD BELs of each site type; a used site counts
+            # its ports (both pads of a Versal site can be in use)
+            pads = {st: max(1, sum(1 for b, _ in bels if PAD_BEL_RE.match(b)))
+                    for st, bels in dev.bels.items()}
+            ports = Counter(site for site, _port, _cell in design.pads)
+            npads = [pads.get(dev.sites[i].type, 1) for i in idx]
+            nused = sum(min(n, max(1, ports[dev.sites[i].name]))
+                        for i, n in zip(idx, npads) if used[i])
+            rows.append((label, nused, sum(npads)))
         else:
             rows.append((label, int(used[idx].sum()), len(idx)))
     return rows
