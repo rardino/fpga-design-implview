@@ -5,13 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "fpga-design-implview"
 dynamic = ["version"]
-description = "Pictures and an interactive viewer of Vivado implemented designs: device resources and what the design uses of them"
+description = "Pictures and an interactive viewer of implemented FPGA designs (Vivado, Quartus): device resources and what the design uses of them"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
 authors = [{ name = "Rocco Ardino", email = "roccoardino@gmail.com" }]
-keywords = ["fpga", "vivado", "floorplan", "placement", "routing", "visualization", "eda"]
+keywords = ["fpga", "vivado", "quartus", "floorplan", "placement", "routing", "visualization", "eda"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",

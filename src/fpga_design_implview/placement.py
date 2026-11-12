@@ -11,17 +11,33 @@ from . import hier
 LUT_BEL_RE = re.compile(r"^([A-H])[56]LUT$")
 FF_BEL_RE = re.compile(r"^[A-H]5?FF2?$")
 
-# Utilization rows: label, site name prefix test, weight per used site.
+# Utilization rows: label, site name prefix test. A row is shown when the
+# device has such sites; IOB counts bonded pads (two per site on Versal), GT
+# bonded sites.
 RESOURCES = [
     ("SLICE", lambda p: p == "SLICE"),
     ("BRAM", lambda p: p in ("RAMB36", "RAMB18")),
-    ("URAM", lambda p: p.startswith("URAM")),
-    ("DSP", lambda p: p.startswith("DSP")),
+    ("URAM", lambda p: p == "URAM288"),
+    ("DSP", lambda p: p.startswith("DSP") and not p.endswith("_CPLX")),
     ("IOB", lambda p: p == "IOB" or p.startswith("IOB")),
     ("GT", lambda p: p.startswith("GT") and "CHANNEL" in p),
-    ("BUFG", lambda p: p.startswith("BUFG")),
-    ("MMCM/PLL", lambda p: p.startswith(("MMCM", "PLL"))),
+    ("GT quad", lambda p: p.startswith("GT") and p.endswith("_QUAD")),     # Versal
+    ("BUFG", lambda p: p.startswith("BUFG") and p != "BUFG_GT_SYNC"),
+    ("MMCM/PLL", lambda p: (p.startswith(("MMCM", "PLL")) and p != "PLL_SELECT_SITE")
+                           or p in ("DPLL", "XPLL", "X5PLL")),
+    ("PCIe", lambda p: p.startswith("PCIE")),
+    ("CMAC", lambda p: p.startswith("CMAC")),
+    ("ILKN", lambda p: p.startswith("ILKN")),
+    ("VCU", lambda p: p == "VCU"),                  # Zynq UltraScale+ EV
+    ("RF ADC", lambda p: p == "HSADC"),             # RFSoC
+    ("RF DAC", lambda p: p == "HSDAC"),
+    ("SD-FEC", lambda p: p == "FE"),
+    ("NoC NMU", lambda p: p.startswith(("NOC_NMU", "NOC2_NMU"))),
+    ("NoC NSU", lambda p: p.startswith(("NOC_NSU", "NOC2_NSU"))),
+    ("DDRMC", lambda p: p.startswith("DDRMC") and not p.endswith("_RIU")),
+    ("HBM MC", lambda p: p == "HBM_MC"),
 ]
+PAD_BEL_RE = re.compile(r"^PAD(_[MS])?$")
 
 
 @dataclass
@@ -86,6 +102,8 @@ def build_placement(dev, design, groups, cell_group, hide_other=False):
 
 
 def utilization(dev, design, p):
+    if design.utilization:      # counted by the tool, in its terms (Quartus)
+        return list(design.utilization)
     rows = []
     prefix = [s.prefix for s in dev.sites]
     used = p.site_used
@@ -114,7 +132,20 @@ def utilization(dev, design, p):
             u36 = {i for i in idx if prefix[i] == "RAMB36" and used[i]}
             u18 = sum(1 for i in idx if prefix[i] == "RAMB18" and used[i])
             rows.append((label, len(u36) + u18 / 2, n36))
+        elif label == "IOB":
+            # bonded pads, from the PAD BELs of each site type; a used site
+            # counts its ports (both pads of a Versal site can be in use)
+            idx = [i for i in idx if dev.sites[i].bonded] or idx
+            pads = {st: max(1, sum(1 for b, _ in bels if PAD_BEL_RE.match(b)))
+                    for st, bels in dev.bels.items()}
+            ports = Counter(site for site, _port, _cell in design.pads)
+            npads = [pads.get(dev.sites[i].type, 1) for i in idx]
+            nused = sum(min(n, max(1, ports[dev.sites[i].name]))
+                        for i, n in zip(idx, npads) if used[i])
+            rows.append((label, nused, sum(npads)))
         else:
+            if label.startswith("GT"):      # bonded in the package, as Vivado counts
+                idx = [i for i in idx if dev.sites[i].bonded] or idx
             rows.append((label, int(used[idx].sum()), len(idx)))
     return rows
 

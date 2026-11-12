@@ -5,10 +5,13 @@ import os
 import sys
 import time
 
-from . import __version__, cache, vivado
+from . import __version__, cache, quartus, vivado
 from .dcp import dcp_info, find_dcp
 from .design import load_design
 from .device import load_device
+
+
+DEFAULT_PATHS = 50
 
 
 def _log(msg):
@@ -29,12 +32,20 @@ def _atomic_run(outputs, args, a, version):
                 os.remove(t)
 
 
+def _device_beside(design_path):
+    """Device file of one design (a map inferred from its placement)."""
+    return design_path.removesuffix(".ivd.gz") + ".ivdev.gz"
+
+
 def export(a, src):
-    """Design (and device on a cache miss) for a checkpoint, run directory or
-    exported .ivd.gz. Returns (device, design, path of the design export)."""
+    """Design (and device on a cache miss) for a checkpoint, run directory,
+    Quartus project or exported .ivd.gz. Returns (device, design, path of the
+    design export)."""
     if src.endswith(".ivd.gz"):
         des = load_design(src)
-        devp = os.path.join(os.path.dirname(src), f"{des.part}.ivdev.gz")
+        devp = _device_beside(src)
+        if not os.path.exists(devp):
+            devp = os.path.join(os.path.dirname(src), f"{des.part}.ivdev.gz")
         if not os.path.exists(devp):
             devp = cache.device_path(des.part)
         if not os.path.exists(devp):
@@ -43,15 +54,21 @@ def export(a, src):
         _check_placed(des)
         return load_device(devp), des, src
 
+    project = quartus.find_project(src)
+    if project is not None:
+        return _export_quartus(a, project)
+
     dcp = find_dcp(src)
     info = dcp_info(dcp)
     part = info.get("part", "")
     routing = not getattr(a, "no_routing", False)
+    npaths = max(getattr(a, "paths", DEFAULT_PATHS), 0)
     devp = cache.device_path(part)
     out = getattr(a, "output_design", None)
-    desp = out or cache.design_path(dcp, routing)
-    if not out and not routing and not os.path.exists(desp) and os.path.exists(cache.design_path(dcp, True)):
-        desp = cache.design_path(dcp, True)     # an export with routing has it all
+    desp = out or cache.design_path(dcp, routing, f"paths={npaths}")
+    full = cache.design_path(dcp, True, f"paths={npaths}")
+    if not out and not routing and not os.path.exists(desp) and os.path.exists(full):
+        desp = full                             # an export with routing has it all
     refresh = getattr(a, "refresh", False)
     if refresh or not os.path.exists(desp) or not os.path.exists(devp):
         args = ["design", os.path.abspath(dcp), desp]
@@ -61,6 +78,7 @@ def export(a, src):
             outputs.append(devp)
         if routing:
             args.append("-routing")
+        args += ["-paths", str(npaths)]
         _log(f"{dcp}: {part}, top {info.get('top', '?')}, Vivado {info.get('vivado', '?')}: exporting")
         t0 = time.time()
         _atomic_run(outputs, args, a, info.get("vivado", ""))
@@ -70,6 +88,33 @@ def export(a, src):
     if not routing:
         des.pips = {}
     _check_placed(des)
+    return load_device(devp), des, desp
+
+
+def _export_quartus(a, project):
+    """Design and device of a compiled Quartus project, read from its files."""
+    from . import altera
+    if not project.netlist:
+        quartus.read(project)                   # says what is missing
+    out = getattr(a, "output_design", None)
+    stamps = [os.stat(p).st_mtime_ns for p in (project.fit, project.sta) if p]
+    desp = out or cache.design_path(project.netlist, "quartus", altera.MAP, *stamps)
+    devp = _device_beside(desp)
+    if getattr(a, "refresh", False) or not os.path.exists(desp) or not os.path.exists(devp):
+        fit = quartus.read(project)
+        info = fit.info
+        _log(f"{project.netlist}: {info.get('part', '?')}, top {info.get('top', '?')}, "
+             f"Quartus {info.get('quartus', '?')}")
+        for w in fit.warnings:
+            _log(f"warning: {w}")
+        m = altera.write(fit, desp, devp)
+        _log("device map inferred from the placement: " + m.summary(fit.utilization))
+        if m.offgrid:
+            kinds = list(dict.fromkeys(loc.rsplit("_", 1)[0] for loc in m.offgrid))
+            _log(f"{len(m.offgrid)} cell{'s' * (len(m.offgrid) > 1)} on a location without "
+                 f"coordinates ({', '.join(k + '_*' for k in kinds[:4])}): not drawn")
+    des = load_design(desp)
+    des.source = project.netlist
     return load_device(devp), des, desp
 
 
@@ -165,6 +210,15 @@ def cmd_device(a):
 
 
 def cmd_info(a):
+    project = quartus.find_project(a.input)
+    if project is not None:
+        fit = quartus.read(project)
+        print(f"project     {project.dir} (revision {project.revision})")
+        print(f"netlist     {project.netlist}")
+        print(f"reports     {' '.join(p for p in (project.fit, project.sta) if p) or 'none'}")
+        for k in ("part", "family", "top", "quartus"):
+            print(f"{k:<11} {fit.info.get(k, '')}")
+        return
     dcp = find_dcp(a.input)
     info = dcp_info(dcp)
     print(f"checkpoint  {dcp}")
@@ -186,8 +240,8 @@ def cmd_tcl(a):
 def main(argv=None):
     ap = argparse.ArgumentParser(
         prog="fpga-design-implview",
-        description="Pictures of Vivado implemented designs: the device resources and "
-                    "what the design uses of them.")
+        description="Pictures of implemented designs (Vivado, Quartus): the device "
+                    "resources and what the design uses of them.")
     ap.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     ap.add_argument("--vivado", help="command that runs Vivado (default: $IMPLVIEW_VIVADO, "
                                      "vivado on the PATH, or an install matching the checkpoint)")
@@ -195,8 +249,11 @@ def main(argv=None):
 
     def source(p):
         p.add_argument("input", help="routed checkpoint, run directory (impl_1), project "
-                                     "directory, or an exported .ivd.gz")
+                                     "directory (Vivado or compiled Quartus), or an exported .ivd.gz")
         p.add_argument("--no-routing", action="store_true", help="skip the routing usage export")
+        p.add_argument("--paths", type=int, default=DEFAULT_PATHS, metavar="N",
+                       help=f"export the N worst setup and N worst hold paths (default "
+                            f"{DEFAULT_PATHS}, 0 for none)")
         p.add_argument("--refresh", action="store_true", help="export again, ignore the cache")
 
     p = sub.add_parser("render", help="write PNG/PDF/SVG/HTML pictures of a design")
@@ -248,7 +305,7 @@ def main(argv=None):
     a = ap.parse_args(argv)
     try:
         a.func(a)
-    except (vivado.VivadoError, FileNotFoundError) as e:
+    except (vivado.VivadoError, quartus.QuartusError, FileNotFoundError) as e:
         raise SystemExit(f"implview: {e}")
 
 

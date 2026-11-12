@@ -7,7 +7,7 @@ import pytest
 from fpga_design_implview import hier
 from fpga_design_implview.cli import main
 from fpga_design_implview.dcp import dcp_info, find_dcp
-from fpga_design_implview.design import Cell
+from fpga_design_implview.design import Cell, Design
 from fpga_design_implview.placement import build_placement, group_cells
 
 
@@ -132,3 +132,60 @@ def test_unplaced_checkpoint_warns(tmp_path, capsys):
         d.info = info
         _check_placed(d)
         assert capsys.readouterr().err == ""
+
+
+def test_timing_paths(files):
+    from fpga_design_implview.design import load_design
+    d = load_design(files[1])
+    assert [p.check for p in d.paths] == ["setup", "hold"]
+    s, h = d.paths
+    assert (s.slack, s.requirement, s.levels, s.start_clock) == (-0.25, 10.0, 2, "clk")
+    assert (s.startpoint, s.endpoint) == ("din", "u_top/u_b/ram/DIA[0]")
+    assert s.nodes[0] == ("din", "IOB_X0Y4") and s.nodes[-1] == ("u_top/u_b/ram/DIA[0]", "RAMB36_X0Y0")
+    assert len(s.nodes) == 8
+    assert s.report == "Slack (VIOLATED) :  -0.250ns\n\tLocation  SLICE_X6Y1  back\\slash"
+    assert h.report == "" and len(h.nodes) == 2
+    assert "T" not in d.info and "N" not in d.info
+
+
+def _page_meta(page):
+    import base64
+    import json
+    import re
+    m = re.search(r'id="meta-data">([^<]+)<', page)
+    return json.loads(gzip.decompress(base64.b64decode(m.group(1))))
+
+
+def test_html_timing_paths(loaded, tmp_path):
+    from fpga_design_implview.html import write_html
+    dev, des, lay = loaded
+    groups, cg, _ = group_cells(des)
+    p = build_placement(dev, des, groups, cg)
+    write_html(str(tmp_path / "a.html"), dev, lay, des, p)
+    meta = _page_meta((tmp_path / "a.html").read_text())
+    tp = meta["tpaths"]
+    assert [t["k"] for t in tp] == ["setup", "hold"]
+    assert tp[0]["sl"] == -0.25 and tp[0]["sp"] == "din"
+    # pins point at drawn sites; the cell names of the viewer are untouched
+    assert all(s >= 0 for _, s in tp[0]["n"])
+    assert tp[0]["n"][1][1] == tp[0]["n"][4][1]             # ff0 and lut0 share SLICE_X0Y1
+    assert "u_top/u_a" in meta["paths"]
+
+
+def test_paths_option_in_the_cache_key(tmp_path, monkeypatch):
+    from fpga_design_implview import cli
+    run = tmp_path / "impl_1"
+    run.mkdir()
+    xml = ('<?xml version="1.0"?><Checkpoint Version="26"><PRODUCT Name="Vivado v2026.1 (64-bit)"/>'
+           '<Part Name="xc7test-pkg-1"/><Top Name="t"/></Checkpoint>')
+    with zipfile.ZipFile(run / "t_routed.dcp", "w") as z:
+        z.writestr("dcp.xml", xml)
+    monkeypatch.setenv("IMPLVIEW_CACHE", str(tmp_path / "cache"))
+    calls = []
+    monkeypatch.setattr(cli, "_atomic_run", lambda outputs, args, a, v: calls.append(args))
+    monkeypatch.setattr(cli, "load_design", lambda p: Design())
+    monkeypatch.setattr(cli, "load_device", lambda p: None)
+    for n in (50, 0):
+        cli.main(["export", str(run), "--paths", str(n)])
+    assert [c[c.index("-paths") + 1] for c in calls] == ["50", "0"]
+    assert calls[0][2] != calls[1][2]             # two cache entries
