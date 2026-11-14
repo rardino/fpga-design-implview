@@ -25,6 +25,7 @@ def _atomic_run(outputs, args, a, version):
     try:
         vivado.run(args, a.vivado, version)
         for p, t in tmp.items():
+            cache.compress(t)
             os.replace(t, p)
     finally:
         for t in tmp.values():
