@@ -172,14 +172,19 @@ def test_html_timing_paths(loaded, tmp_path):
     assert "u_top/u_a" in meta["paths"]
 
 
-def test_paths_option_in_the_cache_key(tmp_path, monkeypatch):
-    from fpga_design_implview import cli
+def _run_dir(tmp_path):
     run = tmp_path / "impl_1"
     run.mkdir()
     xml = ('<?xml version="1.0"?><Checkpoint Version="26"><PRODUCT Name="Vivado v2026.1 (64-bit)"/>'
            '<Part Name="xc7test-pkg-1"/><Top Name="t"/></Checkpoint>')
     with zipfile.ZipFile(run / "t_routed.dcp", "w") as z:
         z.writestr("dcp.xml", xml)
+    return run
+
+
+def test_paths_option_in_the_cache_key(tmp_path, monkeypatch):
+    from fpga_design_implview import cli
+    run = _run_dir(tmp_path)
     monkeypatch.setenv("IMPLVIEW_CACHE", str(tmp_path / "cache"))
     calls = []
     monkeypatch.setattr(cli, "_atomic_run", lambda outputs, args, a, v: calls.append(args))
@@ -189,3 +194,33 @@ def test_paths_option_in_the_cache_key(tmp_path, monkeypatch):
         cli.main(["export", str(run), "--paths", str(n)])
     assert [c[c.index("-paths") + 1] for c in calls] == ["50", "0"]
     assert calls[0][2] != calls[1][2]             # two cache entries
+
+
+def test_plain_exports(files, tmp_path):
+    # Vivado 2022.1 has Tcl 8.5, without zlib: the exports are plain text
+    from fpga_design_implview.design import load_design
+    from fpga_design_implview.device import load_device
+    dev, des = (tmp_path / "plain" / p.name for p in files)
+    dev.parent.mkdir()
+    for p, q in zip(files, (dev, des)):
+        q.write_bytes(gzip.decompress(p.read_bytes()))
+    assert load_design(des).cells == load_design(files[1]).cells
+    assert load_device(dev).sites == load_device(files[0]).sites
+
+
+def test_plain_export_cached_gzipped(files, tmp_path, monkeypatch, capsys):
+    from fpga_design_implview import cache, cli
+    run = _run_dir(tmp_path)
+    monkeypatch.setenv("IMPLVIEW_CACHE", str(tmp_path / "cache"))
+
+    def plain_run(args, cmd, version):
+        for src, out in ((files[1], args[2]), (files[0], args[args.index("-device") + 1])):
+            with open(out, "wb") as f:
+                f.write(gzip.decompress(src.read_bytes()))
+
+    monkeypatch.setattr(cli.vivado, "run", plain_run)
+    cli.main(["export", str(run)])
+    desp, devp = capsys.readouterr().out.strip(), cache.device_path("xc7test-pkg-1")
+    assert cache.is_gzip(desp) and cache.is_gzip(devp)
+    assert os.listdir(os.path.dirname(desp)) == [os.path.basename(desp)]
+    assert os.listdir(os.path.dirname(devp)) == [os.path.basename(devp)]

@@ -1,15 +1,16 @@
 """Device resource map: tiles on the Vivado tile grid, their sites and BELs.
 
-Read back from the gzip'ed TSV written by `implview::export_device`
+Read back from the TSV written by `implview::export_device`
 (tcl/implview.tcl), one file per part, cached by `implview.cache`; or by
 `implview.altera` for a Quartus design, on the grid of its locations.
 """
 
-import gzip
 import re
 from dataclasses import dataclass, field
 
 import numpy as np
+
+from .cache import open_export
 
 SITE_NAME_RE = re.compile(r"^(.*)_X(\d+)Y(\d+)$")
 
@@ -95,7 +96,7 @@ def parse_site_name(name):
 def load_device(path):
     dev = Device()
     gx, gy, ns, slr = [], [], [], []
-    with gzip.open(path, "rt") as f:
+    with open_export(path) as f:
         header = f.readline().rstrip("\n").split("\t")
         if header[0] != "#implview-device":
             raise ValueError(f"{path}: not an implview device file")
