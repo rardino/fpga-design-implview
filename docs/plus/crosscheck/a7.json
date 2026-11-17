@@ -1,0 +1,123 @@
+{
+ "info": {
+  "checkpoint": "examples/digital_clock_routed.dcp",
+  "part": "xc7a35ticsg324-1L",
+  "top": "board_top",
+  "cells": 3510,
+  "nets": 3649,
+  "export_pips": 29885,
+  "const_pips": 202788,
+  "prjxray_db": "<prjxray-db>/artix7 (xc7a35tcsg324-1)"
+ },
+ "vivado": {
+  "fully_routed_nets": 2723,
+  "route_status_errors": 0,
+  "route_vs_nodes_nets": 2721,
+  "route_vs_nodes_disagree": 0,
+  "route_vs_nodes_agree_pct": 100.0
+ },
+ "sites": {
+  "slices_vivado": 602,
+  "slices_fasm": 602,
+  "slices_match_pct": 100.0,
+  "slices_only_vivado": [],
+  "slices_only_fasm": [],
+  "lut_bels_vivado": 1050,
+  "lut_bels_fasm_nonzero": 1383,
+  "lut_bels_found_pct": 100.0,
+  "lut_bels_only_fasm": 333,
+  "lut_bels_only_fasm_note": "route-thru / constant LUTs and SRL/LUTRAM have INIT bits but no LUT1-6 cell",
+  "ff_bels_vivado": 1974,
+  "ff_bels_fasm": 1974,
+  "ff_bels_match_pct": 100.0,
+  "ff_only_vivado": [],
+  "ff_only_fasm": []
+ },
+ "lut_init": {
+  "compared": 1265,
+  "match": 1265,
+  "match_pct": 100.0,
+  "skipped_no_init": 175,
+  "mismatches": []
+ },
+ "ff": {
+  "ffs": 1974,
+  "init_reset_match_pct": 100.0,
+  "init_reset_mismatches": [],
+  "slice_controls": {
+   "CEUSEDMUX": {
+    "slices": 549,
+    "match_pct": 100.0,
+    "mismatches": []
+   },
+   "SRUSEDMUX": {
+    "slices": 549,
+    "match_pct": 100.0,
+    "mismatches": []
+   },
+   "FFSYNC": {
+    "slices": 549,
+    "match_pct": 100.0,
+    "mismatches": []
+   },
+   "LATCH": {
+    "slices": 549,
+    "match_pct": 100.0,
+    "mismatches": []
+   },
+   "CLKINV": {
+    "slices": 549,
+    "match_pct": 100.0,
+    "mismatches": []
+   }
+  }
+ },
+ "pips": {
+  "vivado_pips_with_bits": 15489,
+  "vivado_pips_without_bits": 179311,
+  "fasm_pips": 15581,
+  "match": 15489,
+  "vivado_found_in_fasm_pct": 100.0,
+  "fasm_explained_by_vivado_pct": 99.41,
+  "only_vivado": [],
+  "only_fasm": [
+   "BRAM_L_X30Y0.BRAM_ADDRARDADDRU0.BRAM_IMUX_ADDRARDADDRU0",
+   "BRAM_L_X30Y0.BRAM_ADDRARDADDRU1.BRAM_IMUX_ADDRARDADDRU1",
+   "BRAM_L_X30Y0.BRAM_ADDRARDADDRU10.BRAM_IMUX_ADDRARDADDRU10",
+   "BRAM_L_X30Y0.BRAM_ADDRARDADDRU11.BRAM_IMUX_ADDRARDADDRU11",
+   "BRAM_L_X30Y0.BRAM_ADDRARDADDRU12.BRAM_IMUX_ADDRARDADDRU12",
+   "BRAM_L_X30Y0.BRAM_ADDRARDADDRU13.BRAM_IMUX_ADDRARDADDRU13",
+   "BRAM_L_X30Y0.BRAM_ADDRARDADDRU14.BRAM_IMUX_ADDRARDADDRU14",
+   "BRAM_L_X30Y0.BRAM_ADDRARDADDRU2.BRAM_IMUX_ADDRARDADDRU2",
+   "BRAM_L_X30Y0.BRAM_ADDRARDADDRU3.BRAM_IMUX_ADDRARDADDRU3",
+   "BRAM_L_X30Y0.BRAM_ADDRARDADDRU4.BRAM_IMUX_ADDRARDADDRU4",
+   "BRAM_L_X30Y0.BRAM_ADDRARDADDRU5.BRAM_IMUX_ADDRARDADDRU5",
+   "BRAM_L_X30Y0.BRAM_ADDRARDADDRU6.BRAM_IMUX_ADDRARDADDRU6",
+   "BRAM_L_X30Y0.BRAM_ADDRARDADDRU7.BRAM_IMUX_ADDRARDADDRU7",
+   "BRAM_L_X30Y0.BRAM_ADDRARDADDRU8.BRAM_IMUX_ADDRARDADDRU8",
+   "BRAM_L_X30Y0.BRAM_ADDRARDADDRU9.BRAM_IMUX_ADDRARDADDRU9",
+   "BRAM_L_X30Y0.BRAM_ADDRBWRADDRU0.BRAM_IMUX_ADDRBWRADDRU0",
+   "BRAM_L_X30Y0.BRAM_ADDRBWRADDRU1.BRAM_IMUX_ADDRBWRADDRU1",
+   "BRAM_L_X30Y0.BRAM_ADDRBWRADDRU10.BRAM_IMUX_ADDRBWRADDRU10",
+   "BRAM_L_X30Y0.BRAM_ADDRBWRADDRU11.BRAM_IMUX_ADDRBWRADDRU11",
+   "BRAM_L_X30Y0.BRAM_ADDRBWRADDRU12.BRAM_IMUX_ADDRBWRADDRU12",
+   "BRAM_L_X30Y0.BRAM_ADDRBWRADDRU13.BRAM_IMUX_ADDRBWRADDRU13",
+   "BRAM_L_X30Y0.BRAM_ADDRBWRADDRU14.BRAM_IMUX_ADDRBWRADDRU14",
+   "BRAM_L_X30Y0.BRAM_ADDRBWRADDRU2.BRAM_IMUX_ADDRBWRADDRU2",
+   "BRAM_L_X30Y0.BRAM_ADDRBWRADDRU3.BRAM_IMUX_ADDRBWRADDRU3",
+   "BRAM_L_X30Y0.BRAM_ADDRBWRADDRU4.BRAM_IMUX_ADDRBWRADDRU4",
+   "BRAM_L_X30Y0.BRAM_ADDRBWRADDRU5.BRAM_IMUX_ADDRBWRADDRU5",
+   "BRAM_L_X30Y0.BRAM_ADDRBWRADDRU6.BRAM_IMUX_ADDRBWRADDRU6",
+   "BRAM_L_X30Y0.BRAM_ADDRBWRADDRU7.BRAM_IMUX_ADDRBWRADDRU7",
+   "BRAM_L_X30Y0.BRAM_ADDRBWRADDRU8.BRAM_IMUX_ADDRBWRADDRU8",
+   "BRAM_L_X30Y0.BRAM_ADDRBWRADDRU9.BRAM_IMUX_ADDRBWRADDRU9"
+  ],
+  "only_vivado_count": 0,
+  "only_fasm_count": 92,
+  "fasm_default_bufgctrl_inputs": 91,
+  "fasm_explained_excl_defaults_pct": 99.99,
+  "only_fasm_excl_defaults": [
+   "CFG_CENTER_MID_X46Y32.BSCAN.JTAG_CHAIN_1"
+  ]
+ }
+}
