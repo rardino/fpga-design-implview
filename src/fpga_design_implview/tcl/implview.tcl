@@ -11,9 +11,11 @@
 # then `implview render <dir>/<top>.ivd.gz` (the device file is looked up
 # next to the design file, then in the implview cache).
 #
-# Both files are gzip'ed, tab separated, one record per line, first field is
-# the record kind. The Python side (implview.device / implview.design) reads
-# them back; keep the two in sync when adding fields.
+# Both files are tab separated, one record per line, first field is the
+# record kind. They are gzip'ed when Vivado's Tcl has zlib (Tcl 8.6 on;
+# Vivado 2022.1 has 8.5), plain text otherwise. The Python side
+# (implview.device / implview.design) reads them back; keep the two in sync
+# when adding fields.
 
 namespace eval ::implview {
     variable format_version 1
@@ -21,7 +23,9 @@ namespace eval ::implview {
 
 proc ::implview::_open {path} {
     set f [open $path wb]
-    zlib push gzip $f -level 6
+    if {[llength [info commands zlib]]} {
+        zlib push gzip $f -level 6
+    }
     return $f
 }
 

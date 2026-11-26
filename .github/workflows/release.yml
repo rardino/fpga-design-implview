@@ -1,8 +1,9 @@
 name: release
 
-# A v* tag (matching __version__) publishes to PyPI and makes a GitHub release.
-# Running the workflow by hand (Actions > release > Run workflow) publishes to
-# TestPyPI instead. Both use trusted publishing: no token is stored.
+# A v* tag (matching __version__) publishes to PyPI and makes a GitHub release,
+# a pre-release for an rc tag. Running the workflow by hand (Actions > release >
+# Run workflow) publishes to TestPyPI instead. Both use trusted publishing: no
+# token is stored.
 
 on:
   push:
@@ -83,6 +84,6 @@ jobs:
         with:
           name: dist
           path: dist/
-      - run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes
+      - run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes --prerelease=${{ contains(github.ref_name, 'rc') }}
         env:
           GH_TOKEN: ${{ github.token }}

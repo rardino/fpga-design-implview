@@ -1,15 +1,16 @@
 """Implemented design: placed primitive cells, pblocks, routing usage, the
 worst timing paths.
 
-Read back from the gzip'ed TSV written by `implview::export_design`
+Read back from the TSV written by `implview::export_design`
 (tcl/implview.tcl).
 """
 
-import gzip
 import math
 import re
 from collections import Counter
 from dataclasses import dataclass, field
+
+from .cache import open_export
 
 
 @dataclass
@@ -104,7 +105,7 @@ class Design:
 def load_design(path):
     d = Design()
     paths = {}
-    with gzip.open(path, "rt") as f:
+    with open_export(path) as f:
         header = f.readline().rstrip("\n").split("\t")
         if header[0] != "#implview-design":
             raise ValueError(f"{path}: not an implview design file")
