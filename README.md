@@ -65,6 +65,8 @@ version.
 | `--no-panel`, `--no-labels` | device only, no names on it                    |
 | `--save-highlight FILE`    | write the groups used as a highlight file         |
 | `--refresh`                | export again, ignore the cache                    |
+| `--detail`                 | cell settings, nets and routes for the viewer     |
+| `--nets N`                 | with `--detail`: routes of at most N nets         |
 
 Other commands: `export` (only the export), `device PART` (only the device), `info`
 (part, top, cache status), `tcl` (path of `implview.tcl`).
@@ -104,6 +106,15 @@ it. *Timing report* shows Vivado's `report_timing` of the path with the site nam
 links; *Copy Tcl* gives the `report_timing` command that opens the same path in Vivado.
 `N`/`P` step through the paths, `#path=s3` in the URL opens one.
 
+With `--detail` the page also has a module tree, the settings of each cell (the LUT
+equation computed from INIT, the LUT pin map, FF, BRAM, DSP, I/O and clock settings) with
+its pins and nets, and a net search that draws a net's route tile to tile from its driver to
+its loads (`#net=NAME`, `#module=PATH`, `#site=SITE` in the URL). On 7-series,
+`fpga-design-implview crosscheck <checkpoint> -O DIR` compares this export with the
+bitstream decoded by Project X-Ray (`$IMPLVIEW_BIT2FASM`, `--db-root` or
+`$IMPLVIEW_PRJXRAY_DB`); samples are in
+[Discussion #22](https://github.com/rardino/fpga-design-implview/discussions/22).
+
 ## From a build script
 
 Export at the end of the implementation run, in the same Vivado session, to skip
@@ -114,7 +125,8 @@ source /path/to/implview.tcl
 implview::export_all $out/implview -routing -paths 50  ;# <top>.ivd.gz and <part>.ivdev.gz
 ```
 
-then `fpga-design-implview render $out/implview/<top>.ivd.gz`.
+then `fpga-design-implview render $out/implview/<top>.ivd.gz`. Add `-detail` (and `-nets N`)
+for the detailed view.
 
 ## Quartus
 
@@ -163,5 +175,8 @@ no interconnect, so their rows are thin: zoom in the PDF or the viewer. `--stats
 `report_utilization` does: bonded IOB pads (two per XPIO site) and GTs, and the hard blocks
 of the part (PCIe, CMAC, Interlaken, VCU, RF data converters, SD-FEC, NoC NMU/NSU, DDRMC,
 HBM controllers).
+
+`--detail` routes are tile-to-tile lines, not exact tracks; `crosscheck` needs 7-series and
+a Project X-Ray database.
 
 Tests, from a clone: `pip install -e .[test] && pytest` (no Vivado needed).

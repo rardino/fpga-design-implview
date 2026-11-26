@@ -65,6 +65,21 @@ def _path(r):
 
 
 @dataclass
+class Net:
+    name: str
+    type: str               # SIGNAL, GLOBAL_CLOCK, ... (Vivado net TYPE)
+    fanout: int
+    routed: int             # 0 not routed, 1 route exported, 2 routed but over the -nets cap
+    pins: list = field(default_factory=list)    # driver first: "cell_index:PIN" or "@port"
+    segs: list = field(default_factory=list)    # (tile, tile) routing segments
+    pips: list = field(default_factory=list)    # Vivado pip names
+
+    @property
+    def is_clock(self):
+        return "CLOCK" in self.type
+
+
+@dataclass
 class Design:
     part: str = ""
     top: str = ""
@@ -76,6 +91,19 @@ class Design:
     pips: dict = field(default_factory=dict)        # tile name -> used pips
     paths: list = field(default_factory=list)       # TimingPath, setup then hold
     source: str = ""                                # checkpoint the export came from
+    detail: dict = field(default_factory=dict)      # cell index -> {property: value} (-detail)
+    nets: list = field(default_factory=list)        # Net (-detail)
+    net_summary: dict = field(default_factory=dict)
+
+    def pin_nets(self):
+        """(cell index, pin) -> net index, from the net pin lists."""
+        out = {}
+        for ni, n in enumerate(self.nets):
+            for p in n.pins:
+                c, _, pin = p.partition(":")
+                if c.isdigit():
+                    out[(int(c), pin)] = ni
+        return out
 
     def slack(self, key):
         v = self.info.get(key, "")
@@ -96,6 +124,8 @@ class Design:
 
     def tool(self):
         """The tool that implemented the design, with its version."""
+        if self.info.get("nextpnr"):
+            return self.info["nextpnr"]
         for key, name in (("vivado", "Vivado"), ("quartus", "Quartus")):
             if self.info.get(key):
                 return f"{name} {self.info[key]}"
@@ -128,6 +158,19 @@ def load_design(path):
                 paths[r[1]].nodes.append((r[2], r[3] if len(r) > 3 else ""))
             elif k == "Y" and r[1] in paths:
                 paths[r[1]].report = _unesc(r[2]) if len(r) > 2 else ""
+            elif k == "C":
+                d.detail[int(r[1])] = dict(_unesc(x).split("=", 1) for x in r[2:] if "=" in x)
+            elif k == "W":
+                d.nets.append(Net(r[2], r[3], int(r[4]), int(r[5])))
+            elif k == "Q":
+                d.nets[int(r[1])].pins = [x for x in r[2:]]
+            elif k == "G":
+                d.nets[int(r[1])].segs = [tuple(x.split(" ", 1)) for x in r[2:] if " " in x]
+            elif k == "I":
+                d.nets[int(r[1])].pips = r[2:]
+            elif k == "H":
+                d.net_summary = {"nets": int(r[1]), "routed": int(r[2]), "cap": int(r[3]),
+                                 "pips": int(r[4]) if len(r) > 4 else 0}
             elif k == "part":
                 d.part = r[1]
             elif k == "top":

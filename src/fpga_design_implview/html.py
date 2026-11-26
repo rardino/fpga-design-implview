@@ -101,6 +101,8 @@ def write_html(path, dev, lay, design, place):
         leaves.append(leaf)
         counts[pos[place.cell_site[c]] + 1] += 1
     pk.add("cstart", np.cumsum(counts), "i4")
+    kof = {c: k for k, c in enumerate(order)}
+    detail = _detail(design, dev, lay, pk, q, kof, pos) if design.nets or design.detail else None
     pk.add("cpath", c_path, "i4")
     pk.add("cref", c_ref, "u2")
     pk.add("cbel", c_bel, "u2")
@@ -164,6 +166,7 @@ def write_html(path, dev, lay, design, place):
         "labels": [[gi, x, y] for gi, x, y in labels],
         "heat": heat,
         "tpaths": tpaths,
+        "detail": detail,
         "themes": {k: {x: v[x] for x in ("surface", "text", "text2", "muted", "unused", "block",
                                          "context", "cr", "slr", "seq")}
                    for k, v in THEMES.items()},
@@ -174,6 +177,98 @@ def write_html(path, dev, lay, design, place):
             .replace("__BIN__", _b64gz(pk.blob())))
     with open(path, "w") as f:
         f.write(page)
+
+
+def _cell_kind(ref, group):
+    from .lut import lut_inputs
+    if lut_inputs(ref):
+        return "lut"
+    if group in ("FLOP_LATCH", "REGISTER"):
+        return "ff"
+    return ""
+
+
+def _detail(design, dev, lay, pk, q, kof, pos):
+    """Cell settings, nets and routes for the viewer (from a --detail export)."""
+    from .lut import equation, lut_inputs, parse_init, parse_pinmap
+    pin_nets = design.pin_nets()
+    cell_pins = {}
+    for (c, pin), ni in pin_nets.items():
+        cell_pins.setdefault(c, []).append((pin, ni))
+    cells = {}
+    eq_cache = {}                       # (INIT, inputs) -> equation; LUTs repeat a lot
+    for c, k in kof.items():
+        cell = design.cells[c]
+        props = dict(design.detail.get(c, {}))
+        pins = cell_pins.get(c, [])
+        d = {}
+        n = lut_inputs(cell.ref)
+        if n and "INIT" in props:
+            try:
+                init, _ = parse_init(props["INIT"])
+                pm = parse_pinmap(props.get("PINMAP", ""))
+                key = (init, n)
+                if key not in eq_cache:
+                    eq_cache[key] = equation(init, n)
+                d["eq"] = eq_cache[key]
+                d["pm"] = {f"I{i}": f"A{a}" for i, a in sorted(pm.items())}
+            except ValueError:
+                pass
+        props.pop("PINMAP", None)
+        if props:
+            d["p"] = props
+        if pins:
+            d["n"] = sorted([pin, ni] for pin, ni in pins)
+        kind = _cell_kind(cell.ref, cell.group)
+        if kind:
+            d["k"] = kind
+        if d:
+            cells[k] = d
+
+    # nets: tile centers of the route segments, quantized like the sites
+    tix = dev.tile_index()
+    cx = (lay.col_x[:-1] + lay.col_x[1:]) / 2
+    cy = (lay.row_y[:-1] + lay.row_y[1:]) / 2
+
+    def tc(t):
+        i = tix.get(t)
+        if i is None:
+            return None
+        return int(round(cx[dev.gx[i]] * q)), int(round(cy[dev.gy[i]] * q))
+
+    sstart, segs = [0], []
+    nets = []
+    for ni, n in enumerate(design.nets):
+        for a, b in n.segs:
+            pa, pb = tc(a), tc(b)
+            if pa and pb:
+                segs.extend(pa + pb)
+        sstart.append(len(segs) // 4)
+        drv, loads = -1, []
+        for j, p in enumerate(n.pins):
+            c, _, pin = p.partition(":")
+            k = kof.get(int(c), -1) if c.isdigit() else -1
+            if j == 0:
+                drv = k
+            elif k >= 0:
+                loads.append(k)
+        nets.append([n.name, n.type, n.fanout, n.routed, drv, sorted(set(loads))[:4000],
+                     n.pins[0] if n.pins and not n.pins[0][:1].isdigit() else ""])
+    pk.add("nsstart", sstart, "i4")
+    pk.add("nseg", np.clip(np.array(segs, dtype=np.int64), 0, 65535), "u2")
+
+    # timing paths: the nets they go through, in order
+    cidx = {c.name: i for i, c in enumerate(design.cells)}
+    pnets = []
+    for t in design.paths:
+        lst = []
+        for pin, _ in t.nodes:
+            cell, _, pn = pin.rpartition("/")
+            ni = pin_nets.get((cidx.get(cell, -1), pn))
+            if ni is not None and (not lst or lst[-1] != ni):
+                lst.append(ni)
+        pnets.append(lst)
+    return {"cells": cells, "nets": nets, "pnets": pnets, "summary": design.net_summary}
 
 
 def _esc(s):
@@ -287,6 +382,20 @@ code.tcl { display: block; margin-top: 6px; padding: 6px 8px; font: 11px/1.4 ui-
 #rep a:hover { border-bottom-style: solid; }
 #loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   color: var(--muted); }
+.tree { max-height: 300px; overflow: auto; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--input); padding: 2px 0; font-size: 12px; }
+.tn { display: flex; align-items: baseline; gap: 4px; padding: 1px 6px; white-space: nowrap; cursor: pointer; }
+.tn:hover { background: var(--panel); }
+.tn.on { background: var(--accent); color: #fff; }
+.tn.on .num { color: inherit; }
+.tn.cur { outline: 1px dashed var(--accent); outline-offset: -1px; }
+.tn .tw { width: 1em; flex: none; color: var(--muted); text-align: center; }
+.tn .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.det { font-size: 11.5px; margin: 2px 0 4px 20px; color: var(--text2); }
+.det code { font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); word-break: break-all; }
+.det .nl { color: var(--accent); cursor: pointer; border-bottom: 1px dotted var(--accent); }
+.det .nl.clk { color: var(--fail); border-color: var(--fail); }
+.mlink { color: var(--accent); cursor: pointer; word-break: break-all; }
 @media (max-width: 760px) {
   #app { flex-direction: column; }
   #view { height: 65vh; flex: none; }
@@ -323,6 +432,16 @@ code.tcl { display: block; margin-top: 6px; padding: 6px 8px; font: 11px/1.4 ui-
     <input type="search" id="q" placeholder="name or path, * and ? as wildcards">
     <div class="mut" id="qres"></div>
     <div id="sel"></div>
+    <div id="nets" hidden>
+      <h2>Nets</h2>
+      <input type="search" id="nq" placeholder="net name, * and ? as wildcards">
+      <div class="mut" id="nsum"></div>
+      <div class="plist" id="nres"></div>
+      <div id="ndet"></div>
+    </div>
+    <h2>Module tree</h2>
+    <div class="tree" id="tree"></div>
+    <div class="mut">Click a module to light its sites; a selected site shows its module here.</div>
     <h2>Hierarchy</h2>
     <div class="legend" id="legend"></div>
     <div class="mut">Click a group to hide it. A site takes the color of most of its cells.</div>
@@ -370,7 +489,10 @@ let theme = "light";
 try { theme = localStorage.getItem("implview-theme") || ""; } catch (e) { theme = ""; }
 if (!theme) theme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 const hidden = new Set();
-const layers = { unused: true, routing: false, cr: true, pblocks: true, labels: true, allpaths: false };
+const layers = { unused: true, routing: false, cr: true, pblocks: true, labels: true, allpaths: false, clocks: false };
+const D = M.detail;                 // null without --detail
+const NETS = D ? D.nets : [];
+let nsel = -1, modSel = null, treeCur = null;
 let match = null, sel = -1, hover = -1;
 let view = { s: 1, tx: 0, ty: 0 };
 let classes = [];
@@ -599,8 +721,9 @@ function draw() {
       if (rects.length) { const r = qr(rects[0]); text(name, sx(r[0]) + 4, sy(r[3]) - 9, 12, t.text, "left", 600); }
     }
   }
+  drawNets();
   if (P.length) drawPaths();
-  if (layers.labels && !layers.routing && !match && psel < 0) {
+  if (layers.labels && !layers.routing && !match && psel < 0 && nsel < 0) {
     for (const [g, x, y] of M.labels) pill(M.groups[g].short, sx(x), sy(y), M.groups[g]);
   }
   for (const [i, w] of [[hover, 1.5], [sel, 2.5]]) {
@@ -701,19 +824,23 @@ function showTip(i, px, py) {
 function select(i) {
   sel = i;
   const box = $("sel");
-  if (i < 0) { box.innerHTML = ""; dirty = true; return; }
+  if (i < 0) { box.innerHTML = ""; setHash("site", null); dirty = true; return; }
   const a = A.cstart[i], b = A.cstart[i + 1];
   let h = `<h2>Selected site</h2>${siteHead(i)}<div class="cells">`;
-  for (let k = a; k < b; k++) h += `<div class="cell" data-k="${k}">${cellRow(k, true)}</div>`;
+  for (let k = a; k < b; k++) h += `<div class="cell" data-k="${k}">${cellRow(k, true)}${cellDetail(k)}</div>`;
   h += "</div>";
-  if (b > a) h += `<div class="mut">Click a cell to show its whole module.</div>`;
+  if (b > a) h += `<div class="mut">Module: <span class="mlink" id="smod">${esc(M.paths[A.cpath[a]] || M.top || "(top)")}</span> · click a cell to show its whole module${D ? " · click a net to draw it" : ""}.</div>`;
   if (sitePaths.has(i)) h += `<h2>Timing paths through this site</h2><div class="plist">${sitePaths.get(i).map(prow).join("")}</div>`;
   box.innerHTML = h;
   box.querySelectorAll(".prow").forEach(el => el.onclick = () => selectPath(+el.dataset.j));
   box.querySelectorAll(".cell").forEach(el => el.onclick = () => {
     const p = M.paths[A.cpath[+el.dataset.k]];
-    $("q").value = p ? p + "/*" : "*"; search();
+    revealModule(p); selectModule(p);
   });
+  bindNets(box);
+  if ($("smod")) $("smod").onclick = () => { const p = M.paths[A.cpath[a]]; revealModule(p); selectModule(p); };
+  if (b > a) revealModule(M.paths[A.cpath[a]]);
+  setHash("site", siteName(i));
   dirty = true;
 }
 
@@ -780,6 +907,7 @@ function pathDetail() {
       `<span class="grow">${esc(shortName(hp.cell))}${hp.pins.length ? ` <span class="mut">${esc(hp.pins.join(" → "))}</span>` : ""}` +
       `<br><span class="mut">${esc(where)}</span></span></div>`;
   });
+  if (D && D.pnets[psel] && D.pnets[psel].length) h += `</div><div class="det" style="margin-left:0">Nets: ${D.pnets[psel].map(netLink).join(" → ")}`;
   h += `</div><div class="btns">${p.r ? `<button id="prep">Timing report</button>` : ""}` +
     `<button id="ptcl">Copy Tcl</button><button id="pclr">Clear</button></div>` +
     `<code class="tcl" id="tcl">${esc(tclFor(p))}</code>` +
@@ -789,19 +917,29 @@ function pathDetail() {
     const i = +el.dataset.s;
     if (i >= 0) { select(i); centerOn(i); }
   });
+  bindNets(box);
   if ($("prep")) $("prep").onclick = () => openReport(psel);
   $("ptcl").onclick = () => copyTcl(p);
   $("pclr").onclick = () => selectPath(-1);
 }
+// sites to highlight: the selected net, else the selected path (one state for both,
+// so clearing one selection keeps the other's highlight)
+function netSites(n) {
+  const net = NETS[n], sites = new Set();
+  if (net[4] >= 0) sites.add(cellSite(net[4]));
+  for (const k of net[5]) sites.add(cellSite(k));
+  return sites;
+}
+function updateHighlight() {
+  const sites = nsel >= 0 ? netSites(nsel) : psel >= 0 ? P[psel].sites : null;
+  onPath = null;
+  if (sites) { onPath = new Uint8Array(N); for (const i of sites) onPath[i] = 1; }
+}
 function selectPath(j, zoom = true) {
   psel = j;
-  onPath = null;
-  if (j >= 0) {
-    const p = P[j];
-    onPath = new Uint8Array(N);
-    for (const i of p.sites) onPath[i] = 1;
-    pcheck = p.k;
-  }
+  if (j >= 0 && nsel >= 0) { nsel = -1; $("ndet").innerHTML = ""; }
+  if (j >= 0) pcheck = P[j].k;
+  updateHighlight();
   pathPanel(); rebuild();
   if (j >= 0 && zoom) fitPath(P[j]);
   const row = $("plist").querySelector(".prow.on");
@@ -891,6 +1029,188 @@ function search() {
 let qt = 0;
 $("q").addEventListener("input", () => { clearTimeout(qt); qt = setTimeout(search, 180); });
 
+
+// ---- nets (--detail): routes as tile-to-tile segments
+function netSegs(n, color, width, alpha) {
+  const a = A.nsstart[n], b = A.nsstart[n + 1];
+  if (b <= a) return false;
+  ctx.globalAlpha = alpha; ctx.strokeStyle = color; ctx.lineWidth = width; ctx.lineCap = "round";
+  ctx.beginPath();
+  for (let k = a; k < b; k++) {
+    const j = 4 * k, x0 = sx(A.nseg[j] / Q), y0 = sy(A.nseg[j + 1] / Q), x1 = sx(A.nseg[j + 2] / Q), y1 = sy(A.nseg[j + 3] / Q);
+    if (x0 === x1 && y0 === y1) { ctx.moveTo(x0 + 1, y0); ctx.arc(x0, y0, 1, 0, 2 * Math.PI); }
+    else { ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); }
+  }
+  ctx.stroke(); ctx.globalAlpha = 1;
+  return true;
+}
+function cellSite(k) {     // site of viewer cell k (binary search in cstart)
+  let lo = 0, hi = N - 1;
+  while (lo < hi) { const m = (lo + hi + 1) >> 1; if (A.cstart[m] <= k) lo = m; else hi = m - 1; }
+  return lo;
+}
+function siteBox(i, pad) {
+  const k = 4 * i;
+  return [sx(R[k]) - pad, sy(R[k + 1]) - pad, (R[k + 2] - R[k]) * view.s + 2 * pad, (R[k + 3] - R[k + 1]) * view.s + 2 * pad];
+}
+function drawNet(n, col, w) {
+  const t = T();
+  netSegs(n, t.surface, w + 2.5, 0.9);
+  netSegs(n, col, w, 1);
+  const net = NETS[n];
+  ctx.lineWidth = 1.5; ctx.strokeStyle = col;
+  for (const k of net[5]) ctx.strokeRect(...siteBox(cellSite(k), 1));
+  if (net[4] >= 0) {
+    const i = cellSite(net[4]);
+    ctx.lineWidth = 3; ctx.strokeStyle = t.surface; ctx.strokeRect(...siteBox(i, 3));
+    ctx.lineWidth = 2; ctx.strokeStyle = col; ctx.strokeRect(...siteBox(i, 3));
+  }
+}
+function drawNets() {
+  if (!D) return;
+  const fail = cssVar("--fail"), acc = cssVar("--accent");
+  if (layers.clocks) NETS.forEach((n, j) => { if (n[1].includes("CLOCK")) netSegs(j, fail, 1.2, 0.75); });
+  if (psel >= 0 && D.pnets[psel]) for (const n of D.pnets[psel]) netSegs(n, P[psel].fails ? fail : acc, 1.4, 0.55);
+  if (nsel >= 0) drawNet(nsel, NETS[nsel][1].includes("CLOCK") ? fail : acc, 2);
+}
+function netLink(n) {
+  const net = NETS[n];
+  return `<span class="nl${net[1].includes("CLOCK") ? " clk" : ""}" data-n="${n}" title="${esc(net[0])}">${esc(shortName(net[0]))}</span>`;
+}
+function bindNets(box) { box.querySelectorAll(".nl").forEach(el => el.onclick = e => { e.stopPropagation(); selectNet(+el.dataset.n); }); }
+function netRow(n) {
+  const net = NETS[n];
+  return `<div class="prow${n === nsel ? " on" : ""}" data-n="${n}" title="${esc(net[0])}"><span class="ep">${esc(net[0])}</span>` +
+    `<span class="num">${net[1].includes("CLOCK") ? "clock · " : ""}${net[2]}</span></div>`;
+}
+let nlower = null;
+function netSearch() {
+  const q = $("nq").value.trim().toLowerCase();
+  if (!nlower) nlower = NETS.map(n => n[0].toLowerCase());
+  let test;
+  if (/[*?]/.test(q)) {
+    const re = new RegExp("^" + q.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$");
+    test = s => re.test(s);
+  } else test = s => s.includes(q);
+  const hits = [];
+  for (let n = 0; n < NETS.length && hits.length < 200; n++) if (!q ? NETS[n][1].includes("CLOCK") : test(nlower[n])) hits.push(n);
+  if (!q) for (let n = 0; n < NETS.length && hits.length < 30; n++) if (!hits.includes(n)) hits.push(n);
+  $("nres").innerHTML = hits.map(netRow).join("") || `<div class="mut" style="padding:3px 8px">no net</div>`;
+  $("nres").querySelectorAll(".prow").forEach(el => el.onclick = () => selectNet(+el.dataset.n));
+}
+function selectNet(n, zoom = true) {
+  nsel = n;
+  const box = $("ndet");
+  setHash("net", n >= 0 ? NETS[n][0] : null);
+  updateHighlight();
+  if (n < 0) { box.innerHTML = ""; rebuild(); netSearch(); return; }
+  const net = NETS[n];
+  const sites = netSites(n);
+  const route = ["not routed", "routed", "routed (route not exported: over the --nets cap)"][net[3]];
+  let h = `<h2>Net</h2><b style="word-break:break-all">${esc(net[0])}</b><div class="kv">` +
+    `<span>Type</span><span>${esc(net[1])}</span><span>Fanout</span><span>${net[2]}</span>` +
+    `<span>Route</span><span>${route}, ${A.nsstart[n + 1] - A.nsstart[n]} segments</span>` +
+    `<span>Driver</span><span>${net[4] >= 0 ? `<span class="mlink" data-s="${cellSite(net[4])}">${esc(shortName(cellName(net[4])))}</span>` : esc(net[6] || "–")}</span>` +
+    `</div><div class="mut">Driver site: thick box · load sites: thin boxes · ${net[5].length} placed loads</div>` +
+    `<div class="btns"><button id="nclr">Clear</button></div>`;
+  box.innerHTML = h;
+  box.querySelectorAll(".mlink").forEach(el => el.onclick = () => { const i = +el.dataset.s; select(i); centerOn(i); });
+  $("nclr").onclick = () => selectNet(-1);
+  netSearch(); rebuild();
+  if (zoom && sites.size) fitSites([...sites]);
+}
+function fitSites(list) { fitPath({ sites: list }); }
+
+// ---- module tree, from the cell paths
+const TREE = { name: "", path: "", kids: new Map(), n: 0, open: true };
+{
+  const cnt = new Map();
+  for (let k = 0; k < A.cpath.length; k++) cnt.set(A.cpath[k], (cnt.get(A.cpath[k]) || 0) + 1);
+  M.paths.forEach((p, pi) => {
+    let node = TREE; node.n += cnt.get(pi) || 0;
+    if (!p) return;
+    let acc = "";
+    for (const part of p.split("/")) {
+      acc = acc ? acc + "/" + part : part;
+      if (!node.kids.has(part)) node.kids.set(part, { name: part, path: acc, kids: new Map(), n: 0, open: false });
+      node = node.kids.get(part); node.n += cnt.get(pi) || 0;
+    }
+  });
+}
+function treeHtml(node, depth) {
+  let h = "";
+  const kids = [...node.kids.values()].sort((a, b) => b.n - a.n);
+  for (const c of kids) {
+    const cls = (c.path === modSel ? " on" : "") + (c.path === treeCur ? " cur" : "");
+    h += `<div class="tn${cls}" data-p="${esc(c.path)}" style="padding-left:${6 + depth * 12}px" title="${esc(c.path)}">` +
+      `<span class="tw">${c.kids.size ? (c.open ? "▾" : "▸") : ""}</span><span class="grow">${esc(c.name)}</span><span class="num">${c.n.toLocaleString()}</span></div>`;
+    if (c.open) h += treeHtml(c, depth + 1);
+  }
+  return h;
+}
+function treeNode(path) {
+  let node = TREE;
+  if (!path) return node;
+  for (const part of path.split("/")) { node = node.kids.get(part); if (!node) return null; }
+  return node;
+}
+function renderTree() {
+  const top = `<div class="tn${modSel === "" ? " on" : ""}" data-p=""><span class="tw">▾</span><span class="grow">${esc(M.top || "(top)")}</span><span class="num">${TREE.n.toLocaleString()}</span></div>`;
+  $("tree").innerHTML = top + treeHtml(TREE, 1);
+  $("tree").querySelectorAll(".tn").forEach(el => el.onclick = e => {
+    const p = el.dataset.p, node = treeNode(p);
+    if (e.target.classList.contains("tw") && node && p) { node.open = !node.open; renderTree(); return; }
+    if (node && p) node.open = true;
+    selectModule(modSel === p ? null : p);
+  });
+  const cur = $("tree").querySelector(".tn.cur") || $("tree").querySelector(".tn.on");
+  if (cur) {     // scroll the tree box only, not the whole panel
+    const box = $("tree"), top = cur.offsetTop - box.offsetTop;
+    if (top < box.scrollTop || top > box.scrollTop + box.clientHeight - cur.offsetHeight)
+      box.scrollTop = top - box.clientHeight / 2;
+  }
+}
+function selectModule(p) {
+  modSel = p;
+  setHash("module", p);
+  if (p === null) { match = null; $("qres").textContent = ""; renderTree(); rebuild(); return; }
+  const inMod = M.paths.map(x => p === "" || x === p || x.startsWith(p + "/"));
+  match = new Uint8Array(N);
+  let nc = 0, ns = 0;
+  for (let i = 0; i < N; i++) {
+    for (let k = A.cstart[i]; k < A.cstart[i + 1]; k++) if (inMod[A.cpath[k]]) { nc++; match[i] = 1; }
+    ns += match[i];
+  }
+  $("qres").textContent = `module ${p || M.top}: ${nc.toLocaleString()} cells in ${ns.toLocaleString()} sites`;
+  renderTree(); rebuild();
+}
+function revealModule(p) {
+  treeCur = p;
+  let acc = "";
+  for (const part of (p || "").split("/").slice(0, -1)) {
+    acc = acc ? acc + "/" + part : part;
+    const n = treeNode(acc); if (n) n.open = true;
+  }
+  renderTree();
+}
+
+// ---- cell detail
+function cellDetail(k) {
+  if (!D) return "";
+  const d = D.cells[k];
+  if (!d) return "";
+  let h = "";
+  if (d.eq !== undefined) h += `<div>O = <code>${esc(d.eq)}</code></div>`;
+  if (d.pm) h += `<div class="mut">pins ${Object.entries(d.pm).map(([a, b]) => `${a}→${b}`).join(" ")}</div>`;
+  if (d.p) h += `<div>${Object.entries(d.p).map(([a, b]) => `${esc(a)}=<code>${esc(b)}</code>`).join(" · ")}</div>`;
+  if (d.n) {
+    const show = d.k === "ff" ? d.n.filter(([pin]) => /^(C|CE|R|S|CLR|PRE|D|Q|G|GE)$/.test(pin))
+               : d.k === "lut" ? d.n : d.n.slice(0, 24);
+    h += `<div>${show.map(([pin, n]) => `${esc(pin)}: ${netLink(n)}`).join(" · ")}${d.n.length > show.length ? ` <span class="mut">+${d.n.length - show.length} pins</span>` : ""}</div>`;
+  }
+  return h ? `<div class="det">${h}</div>` : "";
+}
+
 // ---- panel
 function fmt(v) { return Number.isInteger(v) ? v.toLocaleString() : v.toLocaleString(undefined, { maximumFractionDigits: 1 }); }
 function panel() {
@@ -918,10 +1238,16 @@ function panel() {
     `<tr><td class="sub">${l}</td><td class="r">${fmt(u)} / ${t.toLocaleString()}</td><td class="r">${(100 * u / t).toFixed(1)}%</td></tr>`).join("");
   const lay = [["unused", "Unused sites"], ["routing", "Routing usage" + (NH ? "" : " (not exported)")],
                ["cr", "Clock regions"], ["pblocks", "Pblocks"], ["labels", "Group labels"],
-               ["allpaths", "All timing paths, as lines"]];
-  $("layers").innerHTML = lay.filter(([k]) => (k !== "pblocks" || M.pblocks.length) && (k !== "allpaths" || P.length)).map(([k, l]) =>
+               ["allpaths", "All timing paths, as lines"], ["clocks", "Clock nets (routing)"]];
+  $("layers").innerHTML = lay.filter(([k]) => (k !== "pblocks" || M.pblocks.length) && (k !== "allpaths" || P.length) && (k !== "clocks" || D)).map(([k, l]) =>
     `<label><input type="checkbox" data-l="${k}" ${layers[k] ? "checked" : ""} ${k === "routing" && !NH ? "disabled" : ""}> ${l}</label>`).join("");
   $("layers").querySelectorAll("input").forEach(el => el.onchange = () => { layers[el.dataset.l] = el.checked; rebuild(); });
+  if (D) {
+    $("nets").hidden = false;
+    const sm = D.summary || {};
+    $("nsum").textContent = `${NETS.length.toLocaleString()} nets · ${(sm.routed ?? 0).toLocaleString()} routes exported` +
+      (sm.cap && sm.routed >= sm.cap ? ` (cap ${sm.cap})` : "") + " · clock nets listed first";
+  }
   $("theme").textContent = theme === "dark" ? "Light" : "Dark";
 }
 function setTheme(t) {
@@ -967,7 +1293,7 @@ cv.addEventListener("wheel", e => {
   dirty = true;
 }, { passive: false });
 addEventListener("keydown", e => {
-  if (e.target.tagName === "INPUT" && e.target.type !== "checkbox") { if (e.key === "Escape") { e.target.value = ""; search(); } return; }
+  if (e.target.tagName === "INPUT" && e.target.type !== "checkbox") { if (e.key === "Escape") { e.target.value = ""; e.target.id === "nq" ? netSearch() : search(); } return; }
   if (e.ctrlKey || e.metaKey || e.altKey) return;     // Ctrl+F, Ctrl+P: the browser's
   const key = e.key.toLowerCase();
   if (key === "f") fit();
@@ -978,7 +1304,7 @@ addEventListener("keydown", e => {
   }
   if (e.key === "Escape") {
     if (!$("drawer").hidden) { closeReport(); return; }
-    select(-1); selectPath(-1, false); $("q").value = ""; search();
+    select(-1); selectPath(-1, false); if (D) selectNet(-1, false); modSel = null; $("q").value = ""; search(); renderTree();
   }
 });
 new ResizeObserver(resize).observe(cv);
@@ -993,7 +1319,11 @@ if (hash.get("site")) {
   const want = hash.get("site");
   for (let i = 0; i < N; i++) if (siteName(i) === want) { select(i); break; }
 }
+renderTree();
+if (D) { let nt = 0; $("nq").addEventListener("input", () => { clearTimeout(nt); nt = setTimeout(netSearch, 180); }); netSearch(); }
 resize();
+if (hash.get("module") !== null) { const p = hash.get("module"); revealModule(p + "/x"); selectModule(p); fitSites([...match.keys()].filter(i => match[i])); }
+if (D && hash.get("net")) { const n = NETS.findIndex(x => x[0] === hash.get("net")); if (n >= 0) selectNet(n); }
 if (P.length) $("hint").textContent += " · N/P timing paths";
 if (hash.get("path")) {
   const j = P.findIndex(p => p.id === hash.get("path"));

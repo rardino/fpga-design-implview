@@ -2,16 +2,19 @@
 
 import argparse
 import os
+import re
 import sys
 import time
 
 from . import __version__, cache, quartus, vivado
+from .crosscheck import CrosscheckError
 from .dcp import dcp_info, find_dcp
 from .design import load_design
 from .device import load_device
 
 
 DEFAULT_PATHS = 50
+DEFAULT_NETS = 20000
 
 
 def _log(msg):
@@ -64,12 +67,17 @@ def export(a, src):
     part = info.get("part", "")
     routing = not getattr(a, "no_routing", False)
     npaths = max(getattr(a, "paths", DEFAULT_PATHS), 0)
+    detail = getattr(a, "detail", False)
+    nnets = getattr(a, "nets", DEFAULT_NETS)
     devp = cache.device_path(part)
     out = getattr(a, "output_design", None)
-    desp = out or cache.design_path(dcp, routing, f"paths={npaths}")
+    dkey = [f"detail,nets={nnets}"] if detail else []
+    desp = out or cache.design_path(dcp, routing, f"paths={npaths}", *dkey)
     full = cache.design_path(dcp, True, f"paths={npaths}")
-    if not out and not routing and not os.path.exists(desp) and os.path.exists(full):
-        desp = full                             # an export with routing has it all
+    if not out and not detail and not os.path.exists(desp) and os.path.exists(full):
+        # an export with routing has it all (a detail export is not reused here:
+        # a plain render must not pick up the detail data)
+        desp = full
     refresh = getattr(a, "refresh", False)
     if refresh or not os.path.exists(desp) or not os.path.exists(devp):
         args = ["design", os.path.abspath(dcp), desp]
@@ -80,6 +88,8 @@ def export(a, src):
         if routing:
             args.append("-routing")
         args += ["-paths", str(npaths)]
+        if detail:
+            args += ["-detail", "-nets", str(nnets)]
         _log(f"{dcp}: {part}, top {info.get('top', '?')}, Vivado {info.get('vivado', '?')}: exporting")
         t0 = time.time()
         _atomic_run(outputs, args, a, info.get("vivado", ""))
@@ -97,6 +107,8 @@ def _export_quartus(a, project):
     from . import altera
     if not project.netlist:
         quartus.read(project)                   # says what is missing
+    if getattr(a, "detail", False):
+        _log("warning: --detail is for Vivado checkpoints; ignored for a Quartus project")
     out = getattr(a, "output_design", None)
     stamps = [os.stat(p).st_mtime_ns for p in (project.fit, project.sta) if p]
     desp = out or cache.design_path(project.netlist, "quartus", altera.MAP, *stamps)
@@ -198,13 +210,13 @@ def cmd_render(a):
 
 
 def cmd_export(a):
-    a.output_design = a.output
+    a.output_design = os.path.abspath(a.output) if a.output else None
     dev, des, path = export(a, a.input)
     print(path)
 
 
 def cmd_device(a):
-    path = a.output or cache.device_path(a.part)
+    path = os.path.abspath(a.output) if a.output else cache.device_path(a.part)
     if a.refresh or not os.path.exists(path):
         _atomic_run([path], ["device", a.part, path], a, "")
     print(path)
@@ -234,6 +246,90 @@ def cmd_info(a):
         print(f"vivado      {e}")
 
 
+def cmd_crosscheck(a):
+    """--detail export vs the bitstream (prjxray bit2fasm) and Vivado checks."""
+    import json
+    import shutil
+    from . import crosscheck as xc
+    a.detail, a.nets, a.output_design = True, 10 ** 9, None
+    a.no_routing = False
+    dev, des, path = export(a, a.input)
+    dcp = find_dcp(a.input)
+    out = os.path.abspath(a.outdir)
+    os.makedirs(out, exist_ok=True)
+    info = dcp_info(dcp)
+    args = ["crosscheck", os.path.abspath(dcp), out]
+    if a.bit:
+        args += ["-bit", os.path.abspath(a.bit)]
+    t0 = time.time()
+    _log(f"{dcp}: Vivado checks{'' if a.bit else ' and bitstream'}")
+    vivado.run(args, a.vivado, info.get("vivado", ""))
+    _log(f"done in {time.time() - t0:.0f} s")
+    bit = os.path.abspath(a.bit) if a.bit else os.path.join(out, "design.bit")
+    const = []
+    with open(os.path.join(out, "const_pips.txt")) as f:
+        for line in f:
+            t, _, pip = line.rstrip("\n").partition("\t")
+            if pip:
+                const.append((t, pip))
+    rv = open(os.path.join(out, "route_vs_nodes.txt")).read().splitlines()
+    summ = [x for x in rv if x.startswith("SUMMARY")]
+    nn, nbad = (int(x) for x in summ[0].split("\t")[1:3]) if summ else (0, 0)
+    rs = open(os.path.join(out, "route_status.txt")).read()
+    m = re.search(r"# of fully routed nets[ .:]*(\d+)", rs)
+    rep = {"info": {"checkpoint": dcp, "part": des.part, "top": des.top,
+                    "cells": len(des.cells), "nets": len(des.nets),
+                    "export_pips": sum(len(n.pips) for n in des.nets), "const_pips": len(const)},
+           "vivado": {"fully_routed_nets": int(m.group(1)) if m else None,
+                      "route_status_errors": len(re.findall(r"nets with routing errors[ .:]*([1-9])", rs)),
+                      "route_vs_nodes_nets": nn, "route_vs_nodes_disagree": nbad,
+                      "route_vs_nodes_agree_pct": xc._pct(nn - nbad, nn)}}
+    arch = dev.info.get("architecture", "")
+    fam, dbpart = xc.find_db(arch, des.part, a.db_root)
+    if fam:
+        t0 = time.time()
+        text = xc.bit2fasm(bit, fam, dbpart, out)
+        with open(os.path.join(out, "design.fasm"), "w") as f:
+            f.write(text)
+        fasm = xc.parse_fasm(text)
+        _log(f"bit2fasm ({dbpart}): {len(fasm):,} features in {time.time() - t0:.0f} s")
+        rep["info"]["prjxray_db"] = f"{fam} ({dbpart})"
+        rep.update(xc.compare(dev, des, fasm, fam, const))
+    else:
+        rep["info"]["bitstream_check"] = (f"no Project X-Ray database for {arch or '?'} {des.part} "
+                                          "(--db-root or $IMPLVIEW_PRJXRAY_DB): only Vivado-internal checks")
+    if a.nextpnr:
+        from . import openflow
+        from .design import load_design as _ld
+        ftxt = open(a.nextpnr_fasm).read()
+        op = os.path.join(out, "nextpnr.ivd.gz")
+        openflow.write_design(a.nextpnr, ftxt, des.part, op, des.top)
+        od = _ld(op)
+        vu, ou = openflow.vivado_util(des), openflow.vivado_util(od)
+        vint = sum(1 for n in des.nets for x in n.pips if re.match(r"INT_[LR]_X", x)
+                   and "->>" in x)
+        rep["open_flow"] = {
+            "vivado": {"luts": vu["LUT"], "ffs": vu["FLOP_LATCH"], "carry4": vu["CARRY"],
+                       "slices": openflow.slices_used(des.cells), "int_pips": vint},
+            "nextpnr": {"luts": ou["LUT"], "ffs": ou["FLOP_LATCH"], "carry4": ou["CARRY"],
+                        "slices": openflow.slices_used(od.cells),
+                        "int_pips": sum(od.pips.values())},
+            "note": "same RTL, independent synthesis (Yosys synth_xilinx) and place and route "
+                    "(nextpnr-xilinx): a qualitative comparison, not a match"}
+    with open(os.path.join(out, "crosscheck.json"), "w") as f:
+        json.dump(rep, f, indent=1)
+    with open(os.path.join(out, "crosscheck.md"), "w") as f:
+        f.write(xc.markdown(rep, f"{des.top} ({des.part})"))
+    print(os.path.join(out, "crosscheck.md"))
+
+
+def cmd_import_nextpnr(a):
+    from . import openflow
+    u = openflow.write_design(a.json, open(a.fasm).read(), a.part, a.output, a.top)
+    _log(", ".join(f"{k} {v}" for k, v in sorted(u.items())))
+    print(a.output)
+
+
 def cmd_tcl(a):
     print(os.path.join(vivado.TCL_DIR, "implview.tcl"))
 
@@ -256,6 +352,12 @@ def main(argv=None):
                        help=f"export the N worst setup and N worst hold paths (default "
                             f"{DEFAULT_PATHS}, 0 for none)")
         p.add_argument("--refresh", action="store_true", help="export again, ignore the cache")
+        p.add_argument("--detail", action="store_true",
+                       help="also export cell settings (LUT equations, FF controls, BRAM/DSP/IO/"
+                            "clock properties), nets and their routes (slower, bigger)")
+        p.add_argument("--nets", type=int, default=DEFAULT_NETS, metavar="N",
+                       help=f"with --detail: draw the routes of at most N nets (default "
+                            f"{DEFAULT_NETS}; clock nets and timing path nets first)")
 
     p = sub.add_parser("render", help="write PNG/PDF/SVG/HTML pictures of a design")
     source(p)
@@ -300,13 +402,34 @@ def main(argv=None):
     p.add_argument("input")
     p.set_defaults(func=cmd_info)
 
+    p = sub.add_parser("crosscheck", help="check a --detail export against the bitstream "
+                                           "(7-series, Project X-Ray bit2fasm) and Vivado")
+    source(p)
+    p.add_argument("-O", "--outdir", default="crosscheck", help="report directory")
+    p.add_argument("--bit", help="bitstream of the checkpoint (default: written by Vivado)")
+    p.add_argument("--db-root", help="prjxray-db root (default: $IMPLVIEW_PRJXRAY_DB)")
+    p.add_argument("--nextpnr", metavar="JSON", help="nextpnr-xilinx --write JSON of the same "
+                   "design: compare the open-flow implementation (needs --nextpnr-fasm)")
+    p.add_argument("--nextpnr-fasm", metavar="FASM", help="nextpnr-xilinx --fasm output")
+    p.set_defaults(func=cmd_crosscheck)
+
+    p = sub.add_parser("import-nextpnr", help="an open-flow (nextpnr-xilinx) result as a "
+                                              "design file, to render like a Vivado export")
+    p.add_argument("json", help="nextpnr-xilinx --write JSON (placed and routed)")
+    p.add_argument("--fasm", required=True, help="nextpnr-xilinx --fasm output")
+    p.add_argument("--part", required=True, help="the part, e.g. xc7s25csga324-1 (its device "
+                                                 "file comes from the cache or `device`)")
+    p.add_argument("--top", default="")
+    p.add_argument("-o", "--output", required=True, help="design file, .ivd.gz")
+    p.set_defaults(func=cmd_import_nextpnr)
+
     p = sub.add_parser("tcl", help="path of implview.tcl, to export from a Vivado session")
     p.set_defaults(func=cmd_tcl)
 
     a = ap.parse_args(argv)
     try:
         a.func(a)
-    except (vivado.VivadoError, quartus.QuartusError, FileNotFoundError) as e:
+    except (vivado.VivadoError, quartus.QuartusError, FileNotFoundError, CrosscheckError) as e:
         raise SystemExit(f"implview: {e}")
 
 
